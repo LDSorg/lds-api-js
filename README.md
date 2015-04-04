@@ -151,3 +151,8 @@ This is just helper class. It is called by `LdsApi.init(opts)`
     * will not attempt to check for new data for 15 minutes
   * `uselessWait` // (in milliseconds) defaults to Inifinity
     * if data is this old, it will not be retrieved from cache
+
+Playground
+==========
+
+`window.LdsIo` is set so that you can play with the API from the console (normally the one great failing of Angular APIs).
