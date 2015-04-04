@@ -1,0 +1,30 @@
+{
+  "name": "angular-lds-io",
+  "version": "1.0.0-pre",
+  "homepage": "https://github.com/LDSorg/angular-lds-io",
+  "authors": [
+    "AJ ONeal <awesome@coolaj86.com>"
+  ],
+  "description": "Angular services for working with LDS.org API data via LDS I/O",
+  "main": "angular-lds-io.js",
+  "moduleType": [
+    "globals"
+  ],
+  "keywords": [
+    "lds",
+    "lds.io",
+    "lds.org",
+    "lds-api",
+    "lds-io",
+    "api"
+  ],
+  "license": "Apache2",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "app/bower_components",
+    "test",
+    "tests"
+  ]
+}
