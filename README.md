@@ -11,6 +11,7 @@ Install & Usage
 ===============
 
 ```bash
+bower install --save oauth3
 bower install --save angular-lds-io
 ```
 
