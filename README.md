@@ -32,6 +32,7 @@ angular.module('myApp', [
 
   return LdsApi.init({
     appId: 'TEST_ID_9e78b54c44a8746a5727c972'
+  , appVersion: '1.0.0'
   , invokeLogin: MyAppLogin.invokeLogin
   }).then(function (LdsApiConfig) {
     return LdsApiSession.backgroundLogin().then(function () {
