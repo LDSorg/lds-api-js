@@ -17,6 +17,7 @@ angular
         try {
           val = JSON.parse(localStorage.getItem(prefix + key) || null);
         } catch(e) {
+          console.error("couldn't parse " + prefix + key, localStorage.getItem(prefix + key));
           localStorage.removeItem(prefix + key);
           val = null;
         }
@@ -27,16 +28,20 @@ angular
           val = null;
         }
 
-        return $q.when(val);
+        return val && $q.when(val) || $q.reject();
       }
     , set: function (key, val) {
         try {
-          localStorage.setItem(prefix + key, JSON.parse(val));
+          localStorage.setItem(prefix + key, JSON.stringify(val));
           return $q.when();
         } catch(e) {
-          console.error("couldn't parse " + prefix + key, localStorage.getItem(prefix + key));
+          console.error("couldn't stringify " + prefix + key, val);
           return $q.reject(e);
         }
+      }
+    , remove: function (key) {
+        localStorage.removeItem(prefix + key);
+        return $q.when();
       }
     , clear: function (account) {
         var re;
@@ -82,12 +87,15 @@ angular
   , function LdsApiConfig($window, LdsApiStorage) {
     var defaults = {
       providerUri: 'https://lds.io'
+    , appUri: $window.location.protocol + '//' + $window.location.host + $window.location.pathname
     , appId: null
     , apiPrefix: '/api/ldsio'
+    , logoutIframe: '/logout.html'
     , refreshWait: 15 * 60 * 60 * 1000
     , uselessWait: Infinity
-    , loginHandler: function () {
-        $window.alert("override `LdsApiConfig.loginHandler` with a function that shows a login dialog,"
+    // note: host includes 'port' when port is non-80 / non-443
+    , invokeLogin: function () {
+        $window.alert("override `LdsApiConfig.invokeLogin` with a function that shows a login dialog,"
           + " calls LdsApiSession.login on click, and returns a promise in that chain."
           + " TODO document on website");
       }
@@ -98,6 +106,9 @@ angular
 
         opts = opts || {};
         return LdsApiStorage.get('providerUri').then(function (val) {
+          console.info("API set to " + val);
+          console.log("set to custom provider with `LdsIo.storage.set('providerUri', 'https://example.com')`");
+          console.log("or set to default with `LdsIo.storage.remove('providerUri')`");
           me.providerUri = val;
           me.developerMode = true;
         }, function () {
@@ -112,7 +123,7 @@ angular
           });
 
           Object.keys(defaults).forEach(function (key) {
-            if (undefined === typeof me[key]) {
+            if ('undefined' === typeof me[key]) {
               me[key] = defaults[key];
             }
           });
@@ -121,6 +132,8 @@ angular
             // TODO auto-register oauth3
             $window.alert("[ERROR] you did not supply `LdsApiConfig.appId`. Consider using 'TEST_ID_9e78b54c44a8746a5727c972'");
           }
+
+          return me;
         });
       }
     };
@@ -158,8 +171,9 @@ angular
 
     function init() {
       return LdsApiStorage.get('caches').then(function (result) {
-        caches = result || {};
-        return;
+        caches = result;
+      }, function () {
+        caches = {};
       });
     }
 
@@ -191,11 +205,6 @@ angular
       }
 
       return LdsApiStorage.get(id).then(function (result) {
-        // TODO reject on missing?
-        if (!result) {
-          return (promise || fetch()).then(fin);
-        }
-
         if (usable) {
           return $q.when({ updated: caches[id], value: result, stale: !fresh });
         } else {
@@ -238,17 +247,8 @@ angular
   , 'LdsApiCache'
   , function LdsApiSession($window, $timeout, $q, $http, LdsApiConfig, LdsApiStorage, LdsApiCache) {
     var shared = { session: {} };
-    var apiPrefix;
-    var providerBase;
-    //var oauthPrefix = providerBase + '/api/oauth3';
     var logins = {};
-    var myAppDomain;
-    var myAppId;
     
-    // note: host includes 'port' when port is non-80 / non-443
-    myAppDomain = $window.location.protocol + '//' + $window.location.host;
-    myAppDomain += $window.location.pathname;
-
     // TODO track granted scopes locally
     function save(session) {
       localStorage.setItem('io.lds.session', JSON.stringify(session));
@@ -288,7 +288,7 @@ angular
     function testToken(session) {
       // TODO cache this also, but with a shorter shelf life?
       return $http.get(
-        apiPrefix + '/accounts'
+        LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/accounts'
       , { headers: { 'Authorization': 'Bearer ' + session.token } }
       ).then(function (resp) {
         var accounts = resp.data && resp.data.accounts || resp.data;
@@ -331,7 +331,7 @@ angular
       });
       */
 
-      var url = providerBase + '/logout.html'
+      var url = LdsApiConfig.providerUri + LdsApiConfig.logoutIframe;
       var $iframe = $('<iframe src="' + url + '" width="1px" height="1px" style="opacity: 0.01;" frameborder="0"></iframe>');
       $('body').append($iframe);
       
@@ -340,14 +340,6 @@ angular
       }, 500).then(function () {
         destroy();
       });
-    }
-
-    function init(appId) {
-      myAppId = appId;
-      providerBase = localStorage.getItem('providerUri') || 'https://lds.io';
-      apiPrefix = providerBase + '/api/ldsio';
-      console.warn("TODO set UI flag with notice when in developer mode");
-      // TODO delete stale sessions (i.e. on public computers)
     }
 
     function backgroundLogin() {
@@ -401,12 +393,17 @@ angular
       var id = Math.random().toString().replace(/0\./, '');
       logins[id] = d;
 
-      var url = providerBase + '/api/oauth3/authorization_dialog'
+      // TODO discover via oauth3.json
+      var url = LdsApiConfig.providerUri + '/api/oauth3/authorization_dialog'
         + '?response_type=token'
-        + '&client_id=' + myAppId
+        + '&client_id=' + LdsApiConfig.appId
           // TODO use referrer?
         + '&redirect_uri='
-            + encodeURIComponent(myAppDomain + '/oauth-close.html?id=' + id + '&type=/providers/ldsio/callback/')
+            + encodeURIComponent(LdsApiConfig.appUri + '/bower_components/oauth3/oauth3.html'
+              + '?id=' + encodeURIComponent(id)
+              + '&provider_uri=' + encodeURIComponent('ldsconnect.org')
+              + '&shim=' + encodeURIComponent('/callbacks/ldsconnect.org')
+              )
         + '&scope=' + encodeURIComponent(requestedScope.join(' '))
         + '&state=' + Math.random().toString().replace(/^0./, '')
         ;
@@ -470,7 +467,7 @@ angular
         return session;
       }, function (/*err*/) {
         
-        return LdsApiConfig.loginHandler();
+        return LdsApiConfig.invokeLogin();
       });
     }
 
@@ -499,8 +496,7 @@ angular
     }
 
     return {
-      init: init
-    , restore: restore
+      restore: restore
     , destroy: destroy
     , login: login
     , logout: logout
@@ -525,8 +521,6 @@ angular
   , 'LdsApiCache'
   , function LdsApiRequest($window, $timeout, $q, $http, LdsApiConfig, LdsApiCache) {
     var LdsIoApi;
-    var providerBase;
-    var apiPrefix;
     var promises = {};
 
     function realGet(session, id, url) {
@@ -594,15 +588,10 @@ angular
 
     LdsIoApi = {
       init: function () {
-        providerBase = localStorage.getItem('providerUri') || 'https://lds.io';
-        apiPrefix = providerBase + '/api/ldsio';
-        console.info("API set to " + providerBase);
-        console.log("set to custom provider with `localStorage.setItem('providerUri', 'https://example.com')`");
-        console.log("or set to default with `localStorage.removeItem('providerUri')`");
       }
     , profile: function (session, opts) {
         var id = session.id + '.me';
-        var url = apiPrefix + '/' + session.id + '/me';
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + session.id + '/me';
 
         return promiseApiCall(
           session
@@ -613,7 +602,8 @@ angular
       }
     , stake: function (session, stakeId, opts) {
         var id = session.id + 'stake.' + stakeId;
-        var url = apiPrefix + '/' + session.id + '/stakes/' + stakeId;
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/' + session.id + '/stakes/' + stakeId;
 
         return promiseApiCall(
           session
@@ -624,7 +614,8 @@ angular
       }
     , stakePhotos: function (session, stakeId, opts) {
         var id = session.id + 'stake.' + stakeId;
-        var url = apiPrefix + '/' + session.id + '/stakes/' + stakeId + '/photos';
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/' + session.id + '/stakes/' + stakeId + '/photos';
 
         return promiseApiCall(
           session
@@ -635,7 +626,8 @@ angular
       }
     , ward: function (session, stakeId, wardId, opts) {
         var id = session.id + 'stake.' + stakeId + '.ward.' + wardId;
-        var url = apiPrefix + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId;
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId;
 
         return promiseApiCall(
           session
@@ -646,7 +638,8 @@ angular
       }
     , wardPhotos: function (session, stakeId, wardId, opts) {
         var id = session.id + 'stake.' + stakeId + '.ward.' + wardId + '.photos';
-        var url = apiPrefix + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId + '/photos';
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId + '/photos';
 
         return promiseApiCall(
           session
@@ -657,7 +650,8 @@ angular
       }
     , photoUrl: function (session, photo, size, type) {
         // https://lds.io/api/ldsio/<accountId>/photos/individual/<appScopedId>/<date>/medium/<whatever>.jpg
-        return apiPrefix + '/' + session.id 
+        return LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/' + session.id 
           + '/photos/' + (type || photo.type)
           + '/' + (photo.app_scoped_id || photo.id) + '/' + (photo.updated_at || 'bad-updated-at')
           + '/' + (size || 'medium') + '/' + (photo.app_scoped_id || photo.id) + '.jpg'
@@ -693,5 +687,30 @@ angular
 
 angular
   .module('lds.io', ['lds.io.api', 'lds.io.session', 'lds.io.cache', 'lds.io.storage'])
-  ;
+  .service('LdsApi', [
+    '$window'
+  , 'LdsApiConfig'
+  , 'LdsApiCache'
+  , function ($window, LdsApiConfig, LdsApiCache) {
+    var LdsIo = {
+      init: function (opts) {
+        if ('object' !== typeof opts) {
+          $window.alert("[ERROR] you did not supply an options object to LdsApiConfig.init()");
+        }
 
+        // TODO delete stale sessions (i.e. on public computers)
+        return LdsApiConfig.init(opts).then(function (LdsApiConfig) {
+          return LdsApiCache.init().then(function () {
+            return LdsApiConfig;
+          });
+        });
+      }
+    };
+
+    // for easier debugging :)
+    $window.LdsIo = $window.LdsIo || {};
+    $window.LdsIo.init = LdsIo.init;
+
+    return LdsIo;
+  }])
+  ;
