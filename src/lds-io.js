@@ -5,8 +5,9 @@ angular
   .service('LdsApi', [
     '$window'
   , 'LdsApiConfig'
+  , 'LdsApiStorage'
   , 'LdsApiCache'
-  , function ($window, LdsApiConfig, LdsApiCache) {
+  , function ($window, LdsApiConfig, LdsApiStorage, LdsApiCache) {
     var LdsIo = {
       init: function (opts) {
         if ('object' !== typeof opts) {
@@ -15,8 +16,20 @@ angular
 
         // TODO delete stale sessions (i.e. on public computers)
         return LdsApiConfig.init(opts).then(function (LdsApiConfig) {
-          return LdsApiCache.init().then(function () {
-            return LdsApiConfig;
+          return LdsApiStorage.get('appVersion').then(function (version) {
+            if (version !== LdsApiConfig.appVersion) {
+              return LdsApiCache.destroy();
+            }
+          }, function () {
+            if (!LdsApiConfig.developerMode) {
+              return LdsApiCache.destroy();
+            }
+          }).then(function () {
+            return LdsApiStorage.set('appVersion', opts.appVersion).then(function () {
+              return LdsApiCache.init().then(function () {
+                return LdsApiConfig;
+              });
+            });
           });
         });
       }

@@ -1,7 +1,7 @@
 'use strict';
 
 angular
-  .module('lds.io.session', ['lds.io.cache', 'lds.io.storage', 'lds.io.config'])
+  .module('lds.io.session', ['oauth3', 'lds.io.cache', 'lds.io.storage', 'lds.io.config'])
   .service('LdsApiSession', [
     '$window'
   , '$timeout'
@@ -10,9 +10,32 @@ angular
   , 'LdsApiConfig'
   , 'LdsApiStorage'
   , 'LdsApiCache'
-  , function LdsApiSession($window, $timeout, $q, $http, LdsApiConfig, LdsApiStorage, LdsApiCache) {
+  , 'Oauth3'
+  , function LdsApiSession($window, $timeout, $q, $http
+      , LdsApiConfig, LdsApiStorage, LdsApiCache, Oauth3) {
     var shared = { session: {} };
     var logins = {};
+    var loginPromises = {};
+    var foregroundLoginPromises = {};
+    var backgroundLoginPromises = {};
+    var LdsIoSession;
+
+    $window.completeLogin = function (name, url) {
+      var params = parseLogin(name, url);
+      var d = loginPromises[params.state || params.id];
+
+      if (!params.id) {
+        throw new Error("could not parse id from login");
+      }
+
+      if (!params.token) {
+        return $q.reject(new Error("didn't get token")); // destroy();
+      }
+
+      shared.session.token = params.token;
+      // TODO rid token on reject
+      return testToken(shared.session).then(save).then(d.resolve, d.reject);
+    };
     
     // TODO track granted scopes locally
     function save(session) {
@@ -103,122 +126,100 @@ angular
       return $timeout(function () {
         $iframe.remove();
       }, 500).then(function () {
-        destroy();
-      });
-    }
-
-    function backgroundLogin() {
-      return restore().then(function (session) {
-        // TODO check expirey
-        return testToken(session);
-      }, function () {
-        silentLogin();
-        return;
+        return destroy();
       });
     }
 
     function parseLogin(name, url) {
       // TODO return granted_scope and expires_at
+      // TODO move into oauth3.html
 
       var tokenMatch = url.match(/(^|\#|\?|\&)access_token=([^\&]+)(\&|$)/);
       var idMatch = url.match(/(^|\#|\?|\&)id=([^\&]+)(\&|$)/);
-      var token;
-      var id;
+      var stateMatch = url.match(/(^|\#|\?|\&)state=([^\&]+)(\&|$)/);
+      var results = {};
 
       if (tokenMatch) {
-        token = tokenMatch[2];
+        results.token = tokenMatch[2];
       }
 
       if (idMatch) {
-        id = idMatch[2];
+        restults.id = idMatch[2];
       }
 
-      return { token: token, id: id };
+      if (stateMatch) {
+        results.state = stateMatch[2];
+      }
+
+      return results;
     }
 
-    $window.completeLogin = function (name, url) {
-      var params = parseLogin(name, url);
-      var d = logins[params.id];
+    function framedLogin(providerUri, url, state, background) {
+      var progressPromises;
 
-      if (!params.id) {
-        throw new Error("could not parse id from login");
+      // TODO scope to providerUri
+      if (background) {
+        progressPromises = backgroundLoginPromises;
+      } else {
+        progressPromises = foregroundLoginPromises;
       }
 
-      if (!params.token) {
-        return $q.reject(new Error("didn't get token")); // destroy();
-      }
-
-      shared.session.token = params.token;
-      // TODO rid token on reject
-      return testToken(shared.session).then(save).then(d.resolve, d.reject);
-    };
-
-    function createLogin(d, oauthscope) {
-      var requestedScope = oauthscope || ['me'];
-      var id = Math.random().toString().replace(/0\./, '');
-      logins[id] = d;
-
-      // TODO discover via oauth3.json
-      var url = LdsApiConfig.providerUri + '/api/oauth3/authorization_dialog'
-        + '?response_type=token'
-        + '&client_id=' + LdsApiConfig.appId
-          // TODO use referrer?
-        + '&redirect_uri='
-            + encodeURIComponent(LdsApiConfig.appUri + '/bower_components/oauth3/oauth3.html'
-              + '?id=' + encodeURIComponent(id)
-              + '&provider_uri=' + encodeURIComponent('ldsconnect.org')
-              + '&shim=' + encodeURIComponent('/callbacks/ldsconnect.org')
-              )
-        + '&scope=' + encodeURIComponent(requestedScope.join(' '))
-        + '&state=' + Math.random().toString().replace(/^0./, '')
-        ;
-
-      return url;
-    }
-
-    // This is for client-side (implicit grant) oauth2
-    function silentLogin(oauthscope) {
-      if (silentLogin._inProgress) {
-        return silentLogin._inProgress;
+      if (progressPromises[providerUri]) {
+        return progressPromises[providerUri];
       }
 
       var d = $q.defer();
-      var url = createLogin(d, oauthscope); // resolves in createLogin
-      var $iframe = $('<iframe src="' + url + '" width="1px" height="1px" style="opacity: 0.01;" frameborder="0"></iframe>');
+      loginPromises[state] = d;
 
-      function removeIframe(data) {
-        silentLogin._inProgress = null;
-        $iframe.remove();
+      progressPromises[providerUri] = d.promise.then(function (data) {
+        progressPromises[providerUri] = null;
         return data;
-      }
-
-      function removeIframeErr(err) {
-        silentLogin._inProgress = null;
-        $iframe.remove();
+      }, function (err) {
+        progressPromises[providerUri] = null;
         return $q.reject(err);
-      }
+      });
+
+      return progressPromises[providerUri];
+    }
+
+    function popupLogin(providerUri, url, state) {
+      var promise = framedLogin(providerUri, url, state, false);
+
+      // This is for client-side (implicit grant) oauth2
+      $window.open(url, 'ldsioLogin', 'height=720,width=620');
+
+      return promise;
+    }
+
+    function backgroundLogin(providerUri, url, state) {
+      var promise = framedLogin(providerUri, url, state, true);
+      var $iframe = $(
+        '<iframe'
+      + ' src="' + url + '"'
+      + ' width="1px" height="1px" style="opacity: 0.01;"'
+      + ' frameborder="0"></iframe>'
+      );  
 
       $('body').append($iframe);
 
-      silentLogin._inProgress = d.promise.then(removeIframe, removeIframeErr);
-
-      return silentLogin._inProgress;
+      return promise.then(function (data) {
+        $iframe.remove();
+        return data;
+      }, function (err) {
+        $iframe.remove();
+        return $q.reject(err);
+      });
     }
 
     function login(oauthscope, opts) {
       // TODO note that this must be called on a click event
       // otherwise the browser will block the popup
       function forceLogin() {
-        var d = $q.defer();
-        var url = createLogin(d, oauthscope);
-
-        // This is for client-side (implicit grant) oauth2
-        $window.open(url, 'ldsioLogin', 'height=720,width=620');
-
-        return d.promise;
+        return logins.implicitGrant({ popup: true, scope: oauthscope });
       }
 
-      return checkSession().then(function (session) {
+      // TODO check for scope in session
+      return checkSession(oauthscope).then(function (session) {
         if (!session.id || opts && opts.force) {
           return forceLogin();
         }
@@ -260,16 +261,158 @@ angular
       }, true);
     }
 
-    return {
-      restore: restore
+    logins.authorizationCode = function (opts) {
+      // TODO OAuth3 provider should use the redirect URI as the appId?
+      return Oauth3.authorizationCode(
+        LdsApiConfig.providerUri
+        // TODO OAuth3 provider should referer / origin as the appId?
+      , opts.scope
+      , opts.redirect_uri
+      , LdsApiConfig.appId || LdsApiConfig.appUri // (this location)
+      );
+    };
+    logins.implicitGrant = function (opts) {
+      opts = opts || {};
+      // TODO OAuth3 provider should use the redirect URI as the appId?
+      return Oauth3.implicitGrant(
+        LdsApiConfig.providerUri
+        // TODO OAuth3 provider should referer / origin as the appId?
+      , opts.scope
+      , opts.redirectUri
+      , LdsApiConfig.appId || LdsApiConfig.appUri // (this location)
+      ).then(function (prequest) {
+        if (!prequest.state) {
+          throw new Error("[Devolper Error] [implicit grant] prequest.state is empty");
+        }
+        if (opts.background) {
+          // TODO foreground iframe
+          return backgroundLogin(LdsApiConfig.providerUri, request.url, request.state);
+        } else if (opts.popup) {
+          // TODO same for new window
+          return popupLogin(LdsApiConfig.providerUri, request.url, request.state);
+        }
+      });
+    };
+    logins.resourceOwnerPassword = function (username, password, scope) {
+      return Oauth3.resourceOwnerPassword(
+        LdsApiConfig.providerUri
+        // TODO OAuth3 provider should referer / origin as the appId?
+      , username
+      , password
+      , scope
+      , LdsApiConfig.appId || LdsApiConfig.appUri // (this location)
+      ).then(function (request) {
+        return $http({
+          url: request.url
+        , method: request.method
+        , data: request.data
+        }).then(function (result) {
+          if (result.data.token) {
+            return save(result.data);
+          }
+
+          if (result.data.error) {
+            return $q.reject(result.data.error); 
+          }
+
+          if ('string' === typeof result.data){
+            return $q.reject(new Error("[Uknown Error] Message: " + result.data)); 
+          } 
+
+          console.error("[ERROR] could not retrieve resource owner password token");
+          console.warn(result.data);
+          return $q.reject(new Error("[Uknown Error] see developer console for details")); 
+        });
+      });
+    };
+
+    LdsIoSession = {
+      usernameMinLength: 4
+    , secretMinLength: 8
+    , validateUsername: function (ldsaccount) {
+        if ('string' !== typeof ldsaccount) {
+          throw new Error("[Developer Error] ldsaccount should be a string");
+        }
+
+        if (!/^[0-9a-z\.\-_]+$/i.test(ldsaccount)) {
+          // TODO validate this is true on the server
+          return new Error("Only alphanumeric characters, '-', '_', and '.' are allowed in usernames.");
+        }
+
+        if (ldsaccount.length < LdsIoSession.usernameMinLength) {
+          // TODO validate this is true on the server
+          return new Error('Username too short. Use at least '
+            + LdsIoSession.usernameMinLength + ' characters.');
+        }
+
+        return true;
+      }
+    , checkUsername: function (ldsaccount) {
+        // TODO support ldsaccount as type
+        var type = null;
+
+        // TODO update backend to /api/ldsio/username/:ldsaccount?
+        return $http.get(
+          LdsApiConfig.providerUri + '/api' + '/logins/check/' + type + '/' + ldsaccount
+        ).then(function (result) {
+          if (!result.data.exists) {
+            return $q.reject(new Error("username does not exist"));
+          }
+        }, function (err) {
+          if (/does not exist/.test(err.message)) {
+            return $q.reject(err);
+          }
+
+          throw err;
+        });
+      }
+    , restore: restore
     , destroy: destroy
     , login: login
+    , logins: logins
     , logout: logout
     , onLogin: onLogin
     , onLogout: onLogout
     , checkSession: checkSession
     , requireSession: requireSession
-    , backgroundLogin: backgroundLogin
+    , openAuthorizationDialog: function () {
+        // this is intended for the resourceOwnerPassword strategy
+        return LdsApiConfig.invokeLogin();
+      }
+    , implicitGrantLogin: function (opts) {
+        var promise;
+        opts = opts || {};
+
+        if (!opts.force) {
+          promise = $q.when();
+        } else {
+          promise = $q.reject();
+        }
+
+        promise.then(function () {
+          return restore().then(function (session) {
+            // TODO check expirey
+            return testToken(session);
+          });
+        }, function () {
+          return logins.implicitGrant({
+            background: opts.background // iframe in background
+          , popup: opts.popup           // presented in popup
+          , window: opts.window         // presented in new tab / new window
+          , iframe: opts.iframe         // presented in same window with security code
+                                        // linked to bower_components/oauth3/oauth3.html
+          , redirectUri: LdsApiConfig.appUri + '/oauth3.html'
+          });
+        });
+      }
+    , backgroundLogin: function (opts) {
+        opts = opts || {};
+
+        opts.background = true;
+        return LdsIoSession.implicitGrantLogin(opts);
+      }
     };
+
+    return LdsIoSession;
   }])
   ;
