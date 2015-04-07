@@ -13,34 +13,239 @@ angular
   , 'Oauth3'
   , function LdsApiSession($window, $timeout, $q, $http
       , LdsApiConfig, LdsApiStorage, LdsApiCache, Oauth3) {
-    var shared = { session: {} };
+
+    function createSession() {
+      return { logins: [], accounts: [] };
+    }
+
+    var shared = { session: createSession() };
     var logins = {};
     var loginPromises = {};
     var foregroundLoginPromises = {};
     var backgroundLoginPromises = {};
     var LdsIoSession;
 
-    $window.completeLogin = function (name, url) {
-      var params = parseLogin(name, url);
-      var d = loginPromises[params.state || params.id];
+    $window.completeLogin = function (_, __, params) {
+      var state = params.browser_state || params.state;
+      var stateParams = Oauth3.states[state];
+      var d = loginPromises[state];
 
-      if (!params.id) {
-        throw new Error("could not parse id from login");
+      function closeWindow() {
+        if (d.winref) {
+          d.winref.close(); 
+        }
       }
 
-      if (!params.token) {
-        return $q.reject(new Error("didn't get token")); // destroy();
+      d.promise.then(closeWindow).catch(closeWindow);
+
+      if (!state) {
+        d.reject(new Error("could not parse state from login"));
+        return;
       }
 
-      shared.session.token = params.token;
+      if (!params.access_token) {
+        d.reject(new Error("didn't get token")); // destroy();
+        return;
+      }
+
+      if (!stateParams) {
+        d.reject(new Error("didn't get matching state")); // could be an attack?
+        return;
+      }
+
       // TODO rid token on reject
-      return testToken(shared.session).then(save).then(d.resolve, d.reject);
+      testLoginAccounts(getLoginFromTokenParams(null, params))
+        .then(save).then(d.resolve, d.reject);
     };
+
+    function getLoginFromTokenParams(ldsaccount, params) {
+      if (!params || !(params.access_token || params.accessToken || params.token)) {
+        return null;
+      }
+
+      return {
+        token: params.access_token || params.accessToken || params.token
+      , expiresAt: params.expires_at || params.expiresAt
+          || Date.now() + (1 * 60 * 60 * 1000) // TODO
+      , appScopedId: params.app_scoped_id || params.appScopedId
+          || null
+      , loginId: ldsaccount
+      , loginType: ldsaccount && 'ldsaccount'
+      }
+    }
+
+    function getId(o, p) {
+      // object
+      if (!o) {
+        return null;
+      }
+      // prefix
+      if (!p) {
+        return o.appScopedId || o.app_scoped_id || o.id || null;
+      } else {
+        return o[p + 'AppScopedId'] || o[p + '_app_scoped_id'] || o[p + 'Id'] || o[p + '_id'] || null;
+      }
+    }
+
+    function getToken(session, accountId) {
+      var logins = [];
+      var login;
+
+      // search logins first because we know we're actually
+      // logged in with said login, y'know?
+      session.logins.forEach(function (login) {
+        login.accounts.forEach(function (account) {
+          if (getId(account) === accountId) {
+            logins.push(login);
+          }
+        });
+      });
+
+      login = logins.sort(function (a, b) {
+        // b - a // most recent first
+        return (new Date(b.expiresAt).value || 0) - (new Date(a.expiresAt).value || 0)
+      })[0];
+
+      return login && login.token;
+    }
+
+    // this should be done at every login
+    // even an existing login may gain new accounts
+    function addAccountsToSession(session, login, accounts) {
+      var now = Date.now();
+
+      login.accounts = accounts.map(function (account) {
+        account.addedAt = account.addedAt || now;
+        return {
+          id: getId(account)
+        , addedAt: now
+        }
+      });
+
+      accounts.forEach(function (newAccount) {
+        if (!session.accounts.some(function (other, i) {
+          if (getId(other) === getId(newAccount)) {
+            session.accounts[i] = newAccount;
+            return true;
+          }
+        })) {
+          session.accounts.push(newAccount);
+        }
+      });
+
+      session.accounts.sort(function (a, b) {
+        return b.addedAt - a.addedAt;
+      });
+    }
+
+    function removeItem(array, item) {
+      var i = array.indexOf(item);
+
+      if (-1 !== i) {
+        array.splice(i, 1);
+      }
+    }
+
+    // this should be done on login and logout
+    // an old login may have lost or gained accounts
+    function pruneAccountsFromSession(session) {
+      var accounts = session.accounts.slice(0);
+
+      // remember, you can't modify an array while it's in-loop
+      // well, you can... but it would be bad!
+      accounts.forEach(function (account) {
+        if (!session.logins.some(function (login) {
+          return login.accounts.some(function (a) {
+            return getId(a) === getId(account);
+          });
+        })) {
+          removeItem(session.accounts, account);
+        }
+      });
+    }
+
+    function refreshCurrentAccount(session) {
+      // select a default session
+      if (1 === session.accounts.length) {
+        session.accountId = getId(session.accounts[0]);
+        session.id = session.accountId;
+        session.token = session.accountId && getToken(session, session.accountId) || null;
+        return;
+      }
+
+      if (!session.logins.some(function (account) {
+        if (session.accountId === getId(account)) {
+          session.accountId = getId(account);
+          session.id = session.accountId;
+          session.token = session.accountId && getToken(session, session.accountId) || null;
+        }
+      })) {
+        session.accountId = null;
+        session.id = null;
+        session.token = null;
+      }
+    }
+
+    function selectAccount(session, id) {
+      var token = getToken(session, id);
+      if (token) {
+        session.token = token;
+        session.accountId = id;
+        session.id = id;
+      } else {
+        throw new Error('[Developer Error] it should not be possible to select a logged out account');
+      }
+    }
     
+    function updateSession(session, login, accounts) {
+      var found;
+      login.addedAt = login.addedAt || Date.now();
+
+      // sanity check login
+      if (0 === accounts.length) {
+        login.selectedAccountId = null;
+      }
+      else if (1 === accounts.length) {
+        login.selectedAccountId = getId(accounts[0]);
+      }
+      else if (accounts.length >= 1) {
+        login.selectedAccountId = null;
+      }
+      else {
+        throw new Error("[SANITY CHECK FAILED] bad account length'");
+      }
+
+      addAccountsToSession(session, login, accounts);
+
+      // update login if it exists
+      // (or add it if it doesn't)
+      if (!session.logins.some(function (other, i) {
+        if ((login.loginId && other.loginId === login.loginId) || (other.token === login.token)) {
+          session.logins[i] = login;
+          return true;
+        }
+      })) {
+        session.logins.push(login);
+      }
+
+      pruneAccountsFromSession(session);
+
+      refreshCurrentAccount(session);
+
+      session.logins.sort(function (a, b) {
+        return b.addedAt - a.addedAt;
+      });
+    }
+
     // TODO track granted scopes locally
-    function save(session) {
-      localStorage.setItem('io.lds.session', JSON.stringify(session));
-      return $q.when(session);
+    function save(updates) {
+      // TODO make sure session.logins[0] is most recent
+      updateSession(shared.session, updates.login, updates.accounts);
+
+      // TODO should this be done by the LdsApiStorage?
+      // TODO how to have different accounts selected in different tabs?
+      localStorage.setItem('io.lds.session', JSON.stringify(shared.session));
+      return $q.when(shared.session);
     }
 
     function restore() {
@@ -51,7 +256,7 @@ angular
         return $q.when(shared.session);
       }
 
-      storedSession = JSON.parse(localStorage.getItem('io.lds.session') || null) || {};
+      storedSession = JSON.parse(localStorage.getItem('io.lds.session') || null) || createSession();
 
       if (storedSession.token) {
         shared.session = storedSession;
@@ -73,38 +278,28 @@ angular
       });
     }
 
-    function testToken(session) {
+    function testLoginAccounts(login) {
       // TODO cache this also, but with a shorter shelf life?
       return $http.get(
         LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/accounts'
-      , { headers: { 'Authorization': 'Bearer ' + session.token } }
+      , { headers: { 'Authorization': 'Bearer ' + login.token } }
       ).then(function (resp) {
-        var accounts = resp.data && resp.data.accounts || resp.data;
-        var id;
+        var accounts = resp.data && (resp.data.accounts || resp.data.result || resp.data.results)
+          || resp.data || { error: { message: "Unknown Error when retrieving accounts" } }
+          ;
 
-        // TODO accounts should be an object
-        // (so that the type doesn't change on error)
-        if (!Array.isArray(accounts) || accounts.error) { 
-          console.error("ERR acc", accounts);
-          return $q.reject(new Error("could not verify session")); // destroy();
+        if (accounts.error) { 
+          console.error("[ERROR] couldn't fetch accounts", accounts);
+          return $q.reject(new Error("Could not verify login:" + accounts.error.message));
         }
 
-        if (1 !== accounts.length) {
-          console.error("SCF acc.length", accounts.length);
-          return $q.reject(new Error("[SANITY CHECK FAILED] number of accounts: '" + accounts.length + "'"));
+        if (!Array.isArray(accounts)) {
+          console.error("[Uknown ERROR] couldn't fetch accounts, no proper error", accounts);
+          // TODO destroy();
+          return $q.reject(new Error("could not verify login")); // destroy();
         }
 
-        id = accounts[0].app_scoped_id || accounts[0].id;
-
-        if (!id) {
-          console.error("SCF acc[0].id", accounts);
-          return $q.reject(new Error("[SANITY CHECK FAILED] could not get account id"));
-        }
-
-        session.id = id;
-        session.ts = Date.now();
-
-        return session;
+        return { login: login, accounts: accounts };
       });
     }
 
@@ -128,30 +323,6 @@ angular
       }, 500).then(function () {
         return destroy();
       });
-    }
-
-    function parseLogin(name, url) {
-      // TODO return granted_scope and expires_at
-      // TODO move into oauth3.html
-
-      var tokenMatch = url.match(/(^|\#|\?|\&)access_token=([^\&]+)(\&|$)/);
-      var idMatch = url.match(/(^|\#|\?|\&)id=([^\&]+)(\&|$)/);
-      var stateMatch = url.match(/(^|\#|\?|\&)state=([^\&]+)(\&|$)/);
-      var results = {};
-
-      if (tokenMatch) {
-        results.token = tokenMatch[2];
-      }
-
-      if (idMatch) {
-        restults.id = idMatch[2];
-      }
-
-      if (stateMatch) {
-        results.state = stateMatch[2];
-      }
-
-      return results;
     }
 
     function framedLogin(providerUri, url, state, background) {
@@ -184,9 +355,11 @@ angular
 
     function popupLogin(providerUri, url, state) {
       var promise = framedLogin(providerUri, url, state, false);
+      var winref;
 
       // This is for client-side (implicit grant) oauth2
-      $window.open(url, 'ldsioLogin', 'height=720,width=620');
+      winref = $window.open(url, 'ldsioLogin', 'height=720,width=620');
+      loginPromises[state].winref = winref;
 
       return promise;
     }
@@ -246,7 +419,7 @@ angular
       // because the watches will unwatch when the controller is destroyed
       _scope.__stsessionshared__ = shared;
       _scope.$watch('__stsessionshared__.session', function (newValue, oldValue) {
-        if (!oldValue.id && newValue.id) {
+        if (newValue.accountId && oldValue.accountId !== newValue.accountId) {
           fn(shared.session);
         }
       }, true);
@@ -255,21 +428,33 @@ angular
     function onLogout(_scope, fn) {
       _scope.__stsessionshared__ = shared;
       _scope.$watch('__stsessionshared__.session', function (newValue, oldValue) {
-        if (oldValue.token && !newValue.token) {
+        if (!newValue.accountId && oldValue.accountId) {
           fn(null);
         }
       }, true);
     }
 
-    logins.authorizationCode = function (opts) {
-      // TODO OAuth3 provider should use the redirect URI as the appId?
-      return Oauth3.authorizationCode(
-        LdsApiConfig.providerUri
-        // TODO OAuth3 provider should referer / origin as the appId?
-      , opts.scope
-      , opts.redirect_uri
-      , LdsApiConfig.appId || LdsApiConfig.appUri // (this location)
-      );
+    logins.authorizationRedirect = function (opts) {
+      return Oauth3.authorizationRedirect(
+        opts.providerUri
+      , opts.scope // default to directive from this provider
+      , opts.apiHost || LdsApiConfig.providerUri
+      , opts.redirectUri
+      ).then(function (prequest) {
+        if (!prequest.state) {
+          throw new Error("[Devolper Error] [authorization redirect] prequest.state is empty");
+        }
+
+        if (opts.background) {
+          // TODO foreground iframe
+          return backgroundLogin(LdsApiConfig.providerUri, prequest.url, prequest.state);
+        } else if (opts.popup) {
+          // TODO same for new window
+          return popupLogin(LdsApiConfig.providerUri, prequest.url, prequest.state);
+        } else {
+          throw new Error("login framing method not specified");
+        }
+      });
     };
     logins.implicitGrant = function (opts) {
       opts = opts || {};
@@ -293,22 +478,23 @@ angular
         }
       });
     };
-    logins.resourceOwnerPassword = function (username, password, scope) {
+    logins.resourceOwnerPassword = function (ldsaccount, passphrase, scope) {
       return Oauth3.resourceOwnerPassword(
         LdsApiConfig.providerUri
-        // TODO OAuth3 provider should referer / origin as the appId?
-      , username
-      , password
+      , ldsaccount
+      , passphrase
       , scope
       , LdsApiConfig.appId || LdsApiConfig.appUri // (this location)
       ).then(function (request) {
         return $http({
-          url: request.url
+          url: request.url + '?camel=true'
         , method: request.method
         , data: request.data
         }).then(function (result) {
-          if (result.data.token) {
-            return save(result.data);
+          var login = getLoginFromTokenParams(ldsaccount, result.data);
+
+          if (login) {
+            return testLoginAccounts(login).then(save);
           }
 
           if (result.data.error) {
@@ -373,6 +559,11 @@ angular
     , logout: logout
     , onLogin: onLogin
     , onLogout: onLogout
+    , account: function (session) {
+        return session.accounts.filter(function (account) {
+          return getId(account) && session.accountId === getId(account);
+        })[0] || null;
+      }
     , checkSession: checkSession
     , requireSession: requireSession
     , openAuthorizationDialog: function () {
@@ -391,8 +582,15 @@ angular
 
         promise.then(function () {
           return restore().then(function (session) {
+            var promise = $q.when();
+
             // TODO check expirey
-            return testToken(session);
+            session.logins.forEach(function (login) {
+              promise = promise.then(function () {
+                return testLoginAccounts(login).then(save);
+              });
+            });
+            return promise;
           });
         }, function () {
           return logins.implicitGrant({
@@ -411,7 +609,17 @@ angular
         opts.background = true;
         return LdsIoSession.implicitGrantLogin(opts);
       }
+    , debug: {
+        refreshCurrentAccount: refreshCurrentAccount
+      , updateSession: updateSession
+      , testLoginAccounts: testLoginAccounts
+      , save: save
+      , shared: shared
+      }
     };
+
+    window.LdsIo = window.LdsIo || {};
+    window.LdsIo.session = LdsIoSession;
 
     return LdsIoSession;
   }])
