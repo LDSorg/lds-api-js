@@ -1,3 +1,5 @@
+'use strict';
+
 angular
   .module('lds.io.storage', [])
   .service('LdsApiStorage', [
@@ -57,7 +59,7 @@ angular
 
         for (i = 0; i < localStorage.length; i += 1) {
           key = localStorage.key(i);
-          if (re.test(key)) {
+          if (re.test(key) && !/\.(dev|developer)\./.test(key)) {
             keys.push(key);
           }
         }

@@ -30,7 +30,7 @@ angular
       });
     }
 
-    function apiCall(id, url, fetch, opts) {
+    function read(id, fetch, opts) {
       var refreshWait = refreshIn;
       var uselessWait = uselessIn;
       var fresh;
@@ -75,8 +75,9 @@ angular
 
     LdsIoCache = {
       init: init
-    , read: apiCall
+    , read: read
     , destroy: destroy
+    , clear: destroy
     };
 
     // for easier debugging :)

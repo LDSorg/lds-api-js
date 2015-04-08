@@ -69,9 +69,11 @@ angular
           || Date.now() + (1 * 60 * 60 * 1000) // TODO
       , appScopedId: params.app_scoped_id || params.appScopedId
           || null
-      , loginId: ldsaccount
+      , loginId: params.loginId || params.login_id
+      , accountId: params.accountId || params.account_id
+      , comment: ldsaccount && (ldsaccount + ' (via lds.org)') // TODO "AJ on Facebook"
       , loginType: ldsaccount && 'ldsaccount'
-      }
+      };
     }
 
     function getId(o, p) {
@@ -103,7 +105,7 @@ angular
 
       login = logins.sort(function (a, b) {
         // b - a // most recent first
-        return (new Date(b.expiresAt).value || 0) - (new Date(a.expiresAt).value || 0)
+        return (new Date(b.expiresAt).value || 0) - (new Date(a.expiresAt).value || 0);
       })[0];
 
       return login && login.token;
@@ -119,7 +121,7 @@ angular
         return {
           id: getId(account)
         , addedAt: now
-        }
+        };
       });
 
       accounts.forEach(function (newAccount) {
@@ -186,6 +188,7 @@ angular
       }
     }
 
+    /*
     function selectAccount(session, id) {
       var token = getToken(session, id);
       if (token) {
@@ -196,9 +199,9 @@ angular
         throw new Error('[Developer Error] it should not be possible to select a logged out account');
       }
     }
+    */
     
     function updateSession(session, login, accounts) {
-      var found;
       login.addedAt = login.addedAt || Date.now();
 
       // sanity check login
@@ -271,7 +274,7 @@ angular
         return $q.when(shared.session);
       }
 
-      shared.session = {};
+      shared.session = createSession();
       localStorage.removeItem('io.lds.session');
       return LdsApiCache.destroy().then(function (session) {
         return session;
@@ -281,7 +284,8 @@ angular
     function testLoginAccounts(login) {
       // TODO cache this also, but with a shorter shelf life?
       return $http.get(
-        LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/accounts'
+        LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/accounts' + '?camel=true'
       , { headers: { 'Authorization': 'Bearer ' + login.token } }
       ).then(function (resp) {
         var accounts = resp.data && (resp.data.accounts || resp.data.result || resp.data.results)
@@ -401,13 +405,124 @@ angular
       }, forceLogin);
     }
 
-    function requireSession() {
+    function requireLogin(opts) {
       return restore().then(function (session) {
         return session;
       }, function (/*err*/) {
         
-        return LdsApiConfig.invokeLogin();
+        return LdsApiConfig.invokeLogin(opts);
       });
+    }
+
+    function realCreateAccount(login) {
+      return $http.post(LdsApiConfig.providerUri + '/api' + '/accounts', {
+        account: {}
+      , logins: [{
+          // TODO make appScopedIds even for root app
+          id: login.appScopedId || login.app_scoped_id || login.loginId || login.login_id || login.id 
+        }]
+      }, { 
+        headers: {
+          authorization: 'Bearer: ' + login.token
+        }
+      }).then(function (resp) {
+        return resp.data;
+      }, function (err) {
+        return $q.reject(err);
+      });
+    }
+
+    function attachLoginToAccount(account, login) {
+      var url = LdsApiConfig.providerUri + '/api' + '/accounts/' + account.id + '/logins';
+
+      return $http.post(
+        url
+      , { logins: [{ id: login.id }] }
+      ).then(function (resp) {
+        if (!resp.data) {
+          return $q.reject(new Error("no response when linking login to account"));
+        }
+        if (resp.data.error) {
+          return $q.reject(resp.data.error);
+        }
+
+        // return nothing
+      });
+    }
+
+    function handleOrphanLogins(session) {
+      var promise;
+
+      if (session.logins.some(function (login) {
+        return !login.accounts.length;
+      })) {
+        if (session.accounts.length > 1) {
+          throw new Error("[Not Implemented] can't yet attach logins to an account when more than one account exists."
+            + " Please logout and sign back in with your LDS.org Account only. Then attach the other login.");
+        }
+        promise = $q.when();
+        session.logins.forEach(function (login) {
+          if (!login.accounts.length) {
+            promise = promise.then(function () {
+              return attachLoginToAccount(session.accounts[0], login);
+            });
+          }
+        });
+      }
+
+      return promise.then(function () {
+        return session;
+      });
+    }
+
+    function requireAccount(session) {
+      var promise;
+      var ldslogins;
+
+      if (session.accounts.length) {
+        return $q.when(session);
+      }
+
+      if (!session.logins.length) {
+        return $q.reject(new Error("[Developer Error] do not call requireAccount when you have not called requireLogin."));
+      }
+
+      ldslogins = session.logins.filter(function (login) {
+        return 'ldsaccount' === login.loginType;
+      });
+
+      if (!ldslogins.length) {
+        return LdsApiConfig.invokeLogin({
+          hideSocial: true
+        , flashMessage: "Login with your LDS Account at least once before linking other accounts."
+        , flashMessageClass: "alert-warning"
+        }).then(function () {
+          // need to recheck accounts status
+          return requireAccount(session);
+        });
+      }
+
+      // at this point we have a valid ldslogin, but still no ldsaccount
+      promise = $q.when();
+
+      ldslogins.forEach(function (login) {
+        promise = promise.then(function () {
+          return realCreateAccount(login).then(function (account) {
+            login.accounts.push(account);
+            return save({ login: login, accounts: login.accounts });
+          });
+        });
+      });
+
+      return promise.then(handleOrphanLogins);
+    }
+
+    function requireSession(opts) {
+      var promise = $q.when(opts);
+
+      // TODO create middleware stack
+      return promise.then(requireLogin).then(requireAccount);
+        // .then(selectAccount).then(verifyAccount)
     }
 
     function checkSession() {
@@ -471,10 +586,10 @@ angular
         }
         if (opts.background) {
           // TODO foreground iframe
-          return backgroundLogin(LdsApiConfig.providerUri, request.url, request.state);
+          return backgroundLogin(LdsApiConfig.providerUri, prequest.url, prequest.state);
         } else if (opts.popup) {
           // TODO same for new window
-          return popupLogin(LdsApiConfig.providerUri, request.url, request.state);
+          return popupLogin(LdsApiConfig.providerUri, prequest.url, prequest.state);
         }
       });
     };
@@ -539,7 +654,8 @@ angular
 
         // TODO update backend to /api/ldsio/username/:ldsaccount?
         return $http.get(
-          LdsApiConfig.providerUri + '/api' + '/logins/check/' + type + '/' + ldsaccount
+          LdsApiConfig.providerUri + '/api'
+            + '/logins/check/' + type + '/' + ldsaccount + '?camel=true'
         ).then(function (result) {
           if (!result.data.exists) {
             return $q.reject(new Error("username does not exist"));

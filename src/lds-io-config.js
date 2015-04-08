@@ -26,10 +26,10 @@ angular
         var me = this;
 
         opts = opts || {};
-        return LdsApiStorage.get('providerUri').then(function (val) {
+        return LdsApiStorage.get('dev.providerUri').then(function (val) {
           console.info("API set to " + val);
-          console.log("set to custom provider with `LdsIo.storage.set('providerUri', 'https://example.com')`");
-          console.log("or set to default with `LdsIo.storage.remove('providerUri')`");
+          console.log("set to custom provider with `LdsIo.storage.set('dev.providerUri', 'https://example.com')`");
+          console.log("or set to default with `LdsIo.storage.remove('dev.providerUri')`");
           me.providerUri = val;
           me.developerMode = true;
         }, function () {

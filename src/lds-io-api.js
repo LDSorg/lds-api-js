@@ -13,13 +13,26 @@ angular
     var LdsIoApi;
     var promises = {};
 
+    function getId(o, p) {
+      // object
+      if (!o) {
+        return null;
+      }
+      // prefix
+      if (!p) {
+        return o.appScopedId || o.app_scoped_id || o.id || null;
+      } else {
+        return o[p + 'AppScopedId'] || o[p + '_app_scoped_id'] || o[p + 'Id'] || o[p + '_id'] || null;
+      }
+    }
+
     function realGet(session, id, url) {
       if (promises[id]) {
         return promises[id];
       }
 
       promises[id] = $http.get(
-        url
+        url + '?camel=true'
       , { headers: { 'Authorization': 'Bearer ' + session.token } }
       ).then(function (resp) {
         delete promises[id];
@@ -49,7 +62,7 @@ angular
 
     function promiseApiCall(session, id, url, opts) {
       opts = opts || {};
-      return LdsApiCache.read(id, url, function () {
+      return LdsApiCache.read(id, function () {
         var d = $q.defer();
 
         var token = $timeout(function () {
@@ -91,6 +104,9 @@ angular
         );
       }
     , stake: function (session, stakeId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
         var id = session.id + 'stake.' + stakeId;
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId;
@@ -103,6 +119,9 @@ angular
         );
       }
     , stakePhotos: function (session, stakeId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
         var id = session.id + 'stake.' + stakeId;
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/photos';
@@ -115,6 +134,12 @@ angular
         );
       }
     , ward: function (session, stakeId, wardId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
+        if (!wardId) {
+          throw new Error("no ward id provided");
+        }
         var id = session.id + 'stake.' + stakeId + '.ward.' + wardId;
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId;
@@ -127,6 +152,12 @@ angular
         );
       }
     , wardPhotos: function (session, stakeId, wardId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
+        if (!wardId) {
+          throw new Error("no ward id provided");
+        }
         var id = session.id + 'stake.' + stakeId + '.ward.' + wardId + '.photos';
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId + '/photos';
@@ -143,8 +174,8 @@ angular
         return LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id 
           + '/photos/' + (type || photo.type)
-          + '/' + (photo.app_scoped_id || photo.id) + '/' + (photo.updated_at || 'bad-updated-at')
-          + '/' + (size || 'medium') + '/' + (photo.app_scoped_id || photo.id) + '.jpg'
+          + '/' + getId(photo) + '/' + (photo.updated || photo.updated_at || photo.updatedAt || 'bad-updated-at')
+          + '/' + (size || 'medium') + '/' + getId(photo) + '.jpg'
           + '?access_token=' + session.token
           ;
       }
