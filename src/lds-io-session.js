@@ -28,6 +28,7 @@ angular
     $window.completeLogin = function (_, __, params) {
       var state = params.browser_state || params.state;
       var stateParams = Oauth3.states[state];
+      // TODO nix other progressPromises?
       var d = loginPromises[state];
 
       function closeWindow() {
@@ -55,7 +56,9 @@ angular
 
       // TODO rid token on reject
       testLoginAccounts(getLoginFromTokenParams(null, params))
-        .then(save).then(d.resolve, d.reject);
+        .then(save).then(d.resolve, d.reject).then(function (session) {
+          return session;
+        });
     };
 
     function getLoginFromTokenParams(ldsaccount, params) {
@@ -304,6 +307,10 @@ angular
         }
 
         return { login: login, accounts: accounts };
+      }, function (err) {
+        console.error("[Error] couldn't get accounts (might not be linked)");
+        console.warn(err);
+        return { login: login, accounts: [] };
       });
     }
 
@@ -330,6 +337,12 @@ angular
     }
 
     function framedLogin(providerUri, url, state, background) {
+      var err;
+      if (!state) {
+        err = new Error("no state in framedLogin");
+        console.warn(err.stack);
+        throw err;
+      }
       var progressPromises;
 
       // TODO scope to providerUri
@@ -340,6 +353,8 @@ angular
       }
 
       if (progressPromises[providerUri]) {
+        loginPromises[state] = progressPromises[providerUri].loginPromise;
+        progressPromises[providerUri].states.push(state);
         return progressPromises[providerUri];
       }
 
@@ -347,6 +362,7 @@ angular
       loginPromises[state] = d;
 
       progressPromises[providerUri] = d.promise.then(function (data) {
+        // TODO nix extra states and such
         progressPromises[providerUri] = null;
         return data;
       }, function (err) {
@@ -354,12 +370,18 @@ angular
         return $q.reject(err);
       });
 
+      progressPromises[providerUri].loginPromise = d;
+      progressPromises[providerUri].states = [state];
       return progressPromises[providerUri];
     }
 
     function popupLogin(providerUri, url, state) {
       var promise = framedLogin(providerUri, url, state, false);
       var winref;
+
+      if (promise.states.length >= 2) {
+        return promise;
+      }
 
       // This is for client-side (implicit grant) oauth2
       winref = $window.open(url, 'ldsioLogin', 'height=720,width=620');
@@ -437,7 +459,9 @@ angular
 
       return $http.post(
         url
-      , { logins: [{ id: login.id }] }
+      , { logins: [{
+          id: login.appScopedId || login.app_scoped_id || login.loginId || login.login_id || login.id 
+        }] }
       ).then(function (resp) {
         if (!resp.data) {
           return $q.reject(new Error("no response when linking login to account"));
@@ -447,20 +471,26 @@ angular
         }
 
         // return nothing
+      }, function (err) {
+        console.error('[Error] failed to attach login to account');
+        console.warn(err.message);
+        console.warn(err.stack);
+        return $q.reject(err);
       });
     }
 
     function handleOrphanLogins(session) {
       var promise;
 
+      promise = $q.when();
+
       if (session.logins.some(function (login) {
         return !login.accounts.length;
       })) {
         if (session.accounts.length > 1) {
-          throw new Error("[Not Implemented] can't yet attach logins to an account when more than one account exists."
+          throw new Error("[Not Implemented] can't yet attach new social logins when more than one lds account is in the session."
             + " Please logout and sign back in with your LDS.org Account only. Then attach the other login.");
         }
-        promise = $q.when();
         session.logins.forEach(function (login) {
           if (!login.accounts.length) {
             promise = promise.then(function () {
@@ -475,15 +505,17 @@ angular
       });
     }
 
-    function requireAccount(session) {
+    function requireAccountHelper(session) {
       var promise;
       var ldslogins;
+      var err;
 
       if (session.accounts.length) {
         return $q.when(session);
       }
 
       if (!session.logins.length) {
+        console.error("doesn't have any logins");
         return $q.reject(new Error("[Developer Error] do not call requireAccount when you have not called requireLogin."));
       }
 
@@ -492,14 +524,10 @@ angular
       });
 
       if (!ldslogins.length) {
-        return LdsApiConfig.invokeLogin({
-          hideSocial: true
-        , flashMessage: "Login with your LDS Account at least once before linking other accounts."
-        , flashMessageClass: "alert-warning"
-        }).then(function () {
-          // need to recheck accounts status
-          return requireAccount(session);
-        });
+        console.error("no lds accounts");
+        err = new Error("Login with your LDS Account at least once before linking other accounts.");
+        err.code = "E_NO_LDSACCOUNT";
+        return $q.reject(err);
       }
 
       // at this point we have a valid ldslogin, but still no ldsaccount
@@ -514,7 +542,13 @@ angular
         });
       });
 
-      return promise.then(handleOrphanLogins);
+      return promise.then(function (session) {
+        return session;
+      });
+     
+    }
+    function requireAccount(session) {
+      return requireAccountHelper(session).then(handleOrphanLogins);
     }
 
     function requireSession(opts) {
@@ -682,6 +716,7 @@ angular
       }
     , checkSession: checkSession
     , requireSession: requireSession
+    , requireAccount: requireAccount
     , openAuthorizationDialog: function () {
         // this is intended for the resourceOwnerPassword strategy
         return LdsApiConfig.invokeLogin();

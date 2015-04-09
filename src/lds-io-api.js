@@ -89,10 +89,98 @@ angular
       });
     }
 
+    function getLeadership(members) {
+      var honchos = { membershipClerks: [] };
+
+      members.forEach(function (member) {
+        if (!Array.isArray(member.callings)) {
+          // each member should have an array of callings, even if empty
+          // so this is just a sanity check
+          return;
+        }
+
+        member.callings.forEach(function (calling) {
+          if ("Bishopric" === calling.name || 4 === calling.typeId) {
+            honchos.bishop = member;
+          }
+          if ("Bishopric First Counselor" === calling.name || 54 === calling.typeId) {
+            honchos.firstCounselor = member;
+          }
+          if ("Bishopric Second Counselor" === calling.name || 55 === calling.typeId) {
+            honchos.secondCounselor = member;
+          }
+          if ("Ward Executive Secretary" === calling.name || 56 === calling.typeId) {
+            honchos.executiveSecretary = member;
+          }
+          if ("Ward Clerk" === calling.name || 57 === calling.typeId) {
+            honchos.clerk = member;
+          }
+          /*
+          if ("Ward Assistant Clerk" === calling.name || 58 === calling.typeId) {
+            honchos.assistant = member;
+          }
+          */
+          if ("Ward Assistant Clerk--Membership" === calling.name || 787 === calling.typeId) {
+            honchos.membershipClerks.push(member);
+          }
+        });
+      });
+
+      return honchos;
+    }
+
+    function mergeProfile(session, opts) {
+      return LdsIoApi.me(session).then(function (me) {
+        // TODO which ward has admin rights rather than home ward
+        // if (opts.home) // if (opts.called)
+        return LdsIoApi.ward(session, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+          var membersMap = {};
+          var member;
+          var homesMap = {};
+          var home;
+          var leaders;
+
+          ward.members.forEach(function (m) {
+            membersMap[m.appScopedId] = m;
+          });
+
+          ward.homes.forEach(function (h) {
+            homesMap[h.appScopedId] = h;
+          });
+
+          member = membersMap[me.appScopedId];
+          home = homesMap[member.homeAppScopedId];
+
+          leaders = getLeadership(ward.members);
+
+          Object.keys(member).forEach(function (key) {
+            me[key] = member[key];
+          });
+
+          return {
+            me: me
+          , home: home
+          , leaders: leaders
+          , ward: ward
+            // TODO get stake for this ward
+          , stake: {
+              appScopedId: me.homeStakeAppScopedId
+            , name: me.homeStakeName
+            }
+          , membersMap: membersMap
+          , homesMap: homesMap
+          };
+        });
+      });
+    }
+
+    // TODO wrap with promises so that if a call is made before a prior call finishes,
+    // it's just one call
     LdsIoApi = {
       init: function () {
       }
-    , profile: function (session, opts) {
+    , profile: mergeProfile
+    , me: function (session, opts) {
         var id = session.id + '.me';
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + session.id + '/me';
 
