@@ -88,11 +88,13 @@ angular
   , 'LdsApiStorage'
   , function LdsApiConfig($window, LdsApiStorage) {
     var defaults = {
+      // TODO this should be grabbed from oauth3.html?directives=true&callback=directives
       providerUri: 'https://lds.io'
+    , realProviderUri: 'https://ldsconnect.org'
     , appUri: $window.location.protocol + '//' + $window.location.host + $window.location.pathname
     , appId: null
     , apiPrefix: '/api/ldsio'
-    , logoutIframe: '/logout.html'
+    , logoutIframe: '/oauth3.html?logout=true'
     , refreshWait: 15 * 60 * 60 * 1000
     , uselessWait: Infinity
     // note: host includes 'port' when port is non-80 / non-443
@@ -107,12 +109,19 @@ angular
         var me = this;
 
         opts = opts || {};
+
+        // TODO get multiple keys at once
         return LdsApiStorage.get('dev.providerUri').then(function (val) {
-          console.info("API set to " + val);
-          console.log("set to custom provider with `LdsIo.storage.set('dev.providerUri', 'https://example.com')`");
-          console.log("or set to default with `LdsIo.storage.remove('dev.providerUri')`");
-          me.providerUri = val;
           me.developerMode = true;
+          me.providerUri = val;
+          me.providerUriSet = true;
+
+          return LdsApiStorage.get('dev.realProviderUri').then(function (val2) {
+            me.realProviderUri = val2;
+            me.realProviderUriSet = true;
+          }, function () {
+            // ignore
+          });
         }, function () {
           // ignore
         }).then(function () {
@@ -132,7 +141,33 @@ angular
 
           if (!me.appId) {
             // TODO auto-register oauth3
-            $window.alert("[ERROR] you did not supply `LdsApiConfig.appId`. Consider using 'TEST_ID_9e78b54c44a8746a5727c972'");
+            console.error("Please set `LdsApiConfig.appId`, try this:");
+            console.log("    TEST_ID_9e78b54c44a8746a5727c972");
+            $window.alert("[ERROR] `LdsApiConfig.appId` not set.\nTest with 'TEST_ID_9e78b54c44a8746a5727c972'");
+          }
+
+          console.log('');
+          if (!me.providerUriSet) {
+            console.info("Why, hello there Latter-Day Developer! Would you like to test against the beta server?");
+            console.log("    LdsIo.storage.set('dev.providerUri', 'https://beta.lds.io')");
+            console.log("    LdsIo.storage.set('dev.realProviderUri', 'https://beta.ldsconnect.org')");
+            console.log('');
+          }
+          if (me.providerUriSet || me.realProviderUriSet) {
+            console.info("You're in Developer Mode! :-)");
+            console.log("    API: " + me.providerUri);
+            console.log("    UI:  " + me.realProviderUri);
+            console.log('');
+            if (!me.realProviderUriSet) {
+              console.warn("dev.providerUri is not yet properly implemented per spec, so also set dev.realProviderUri");
+              console.log("Example: ");
+              console.log("    LdsIo.storage.set('dev.providerUri', 'https://beta.lds.io')");
+              console.log("    LdsIo.storage.set('dev.realProviderUri', 'https://beta.ldsconnect.org')");
+              console.log('');
+            }
+            console.log("Want to switch back to production mode?");
+            console.log("    LdsIo.storage.remove('dev.providerUri'); LdsIo.storage.remove('dev.realProviderUri');");
+            console.log('');
           }
 
           return me;
@@ -266,11 +301,15 @@ angular
     $window.completeLogin = function (_, __, params) {
       var state = params.browser_state || params.state;
       var stateParams = Oauth3.states[state];
+      // TODO nix other progressPromises?
       var d = loginPromises[state];
 
       function closeWindow() {
         if (d.winref) {
           d.winref.close(); 
+        }
+        if (d.$iframe) {
+          d.$iframe.remove();
         }
       }
 
@@ -278,6 +317,11 @@ angular
 
       if (!state) {
         d.reject(new Error("could not parse state from login"));
+        return;
+      }
+
+      if (stateParams.logout || stateParams.close) {
+        d.resolve();
         return;
       }
 
@@ -293,7 +337,9 @@ angular
 
       // TODO rid token on reject
       testLoginAccounts(getLoginFromTokenParams(null, params))
-        .then(save).then(d.resolve, d.reject);
+        .then(save).then(d.resolve, d.reject).then(function (session) {
+          return session;
+        });
     };
 
     function getLoginFromTokenParams(ldsaccount, params) {
@@ -330,6 +376,7 @@ angular
     function getToken(session, accountId) {
       var logins = [];
       var login;
+      accountId = getId(accountId) || accountId;
 
       // search logins first because we know we're actually
       // logged in with said login, y'know?
@@ -410,6 +457,7 @@ angular
         session.accountId = getId(session.accounts[0]);
         session.id = session.accountId;
         session.token = session.accountId && getToken(session, session.accountId) || null;
+        session.userVerifiedAt = session.accounts[0].userVerifiedAt;
         return;
       }
 
@@ -418,27 +466,16 @@ angular
           session.accountId = getId(account);
           session.id = session.accountId;
           session.token = session.accountId && getToken(session, session.accountId) || null;
+          session.userVerifiedAt = account.userVerifiedAt;
         }
       })) {
         session.accountId = null;
         session.id = null;
         session.token = null;
+        session.userVerifiedAt = null;
       }
     }
 
-    /*
-    function selectAccount(session, id) {
-      var token = getToken(session, id);
-      if (token) {
-        session.token = token;
-        session.accountId = id;
-        session.id = id;
-      } else {
-        throw new Error('[Developer Error] it should not be possible to select a logged out account');
-      }
-    }
-    */
-    
     function updateSession(session, login, accounts) {
       login.addedAt = login.addedAt || Date.now();
 
@@ -542,32 +579,37 @@ angular
         }
 
         return { login: login, accounts: accounts };
+      }, function (err) {
+        console.error("[Error] couldn't get accounts (might not be linked)");
+        console.warn(err);
+        return { login: login, accounts: [] };
       });
     }
 
     function logout() {
-      // TODO also logout of lds.io
-      /*
-      return $http.delete(
-        apiPrefix + '/session'
-      , { headers: { 'Authorization': 'Bearer ' + shared.session.token } }
-      ).then(function () {
-        return destroy();
-      });
-      */
+      var state = Math.random();
+      var d = $q.defer();
 
-      var url = LdsApiConfig.providerUri + LdsApiConfig.logoutIframe;
-      var $iframe = $('<iframe src="' + url + '" width="1px" height="1px" style="opacity: 0.01;" frameborder="0"></iframe>');
-      $('body').append($iframe);
-      
-      return $timeout(function () {
-        $iframe.remove();
-      }, 500).then(function () {
+      loginPromises[state] = d;
+      Oauth3.states[state] = { close: true, logout: true };
+
+      var url = LdsApiConfig.realProviderUri + '/oauth3.html?close=true&state=' + state;
+      d.$iframe = $('<iframe src="' + url
+        + '" width="1px" height="1px" style="opacity: 0.01;" frameborder="0"></iframe>');
+      $('body').append(d.$iframe);
+
+      return d.promise.then(function () {
         return destroy();
       });
     }
 
     function framedLogin(providerUri, url, state, background) {
+      var err;
+      if (!state) {
+        err = new Error("no state in framedLogin");
+        console.warn(err.stack);
+        throw err;
+      }
       var progressPromises;
 
       // TODO scope to providerUri
@@ -578,6 +620,8 @@ angular
       }
 
       if (progressPromises[providerUri]) {
+        loginPromises[state] = progressPromises[providerUri].loginPromise;
+        progressPromises[providerUri].states.push(state);
         return progressPromises[providerUri];
       }
 
@@ -585,6 +629,7 @@ angular
       loginPromises[state] = d;
 
       progressPromises[providerUri] = d.promise.then(function (data) {
+        // TODO nix extra states and such
         progressPromises[providerUri] = null;
         return data;
       }, function (err) {
@@ -592,6 +637,8 @@ angular
         return $q.reject(err);
       });
 
+      progressPromises[providerUri].loginPromise = d;
+      progressPromises[providerUri].states = [state];
       return progressPromises[providerUri];
     }
 
@@ -599,8 +646,12 @@ angular
       var promise = framedLogin(providerUri, url, state, false);
       var winref;
 
+      if (promise.states.length >= 2) {
+        return promise;
+      }
+
       // This is for client-side (implicit grant) oauth2
-      winref = $window.open(url, 'ldsioLogin', 'height=720,width=620');
+      winref = $window.open(url, 'ldsioLogin' + Math.random(), 'height=720,width=620');
       loginPromises[state].winref = winref;
 
       return promise;
@@ -658,10 +709,11 @@ angular
       , logins: [{
           // TODO make appScopedIds even for root app
           id: login.appScopedId || login.app_scoped_id || login.loginId || login.login_id || login.id 
+        , token: login.token || login.accessToken || login.accessToken
         }]
       }, { 
         headers: {
-          authorization: 'Bearer: ' + login.token
+          Authorization: 'Bearer ' + login.token
         }
       }).then(function (resp) {
         return resp.data;
@@ -675,7 +727,10 @@ angular
 
       return $http.post(
         url
-      , { logins: [{ id: login.id }] }
+      , { logins: [{
+          id: login.appScopedId || login.app_scoped_id || login.loginId || login.login_id || login.id 
+        , token: login.token || login.accessToken || login.accessToken
+        }] }
       ).then(function (resp) {
         if (!resp.data) {
           return $q.reject(new Error("no response when linking login to account"));
@@ -685,20 +740,26 @@ angular
         }
 
         // return nothing
+      }, function (err) {
+        console.error('[Error] failed to attach login to account');
+        console.warn(err.message);
+        console.warn(err.stack);
+        return $q.reject(err);
       });
     }
 
     function handleOrphanLogins(session) {
       var promise;
 
+      promise = $q.when();
+
       if (session.logins.some(function (login) {
         return !login.accounts.length;
       })) {
         if (session.accounts.length > 1) {
-          throw new Error("[Not Implemented] can't yet attach logins to an account when more than one account exists."
+          throw new Error("[Not Implemented] can't yet attach new social logins when more than one lds account is in the session."
             + " Please logout and sign back in with your LDS.org Account only. Then attach the other login.");
         }
-        promise = $q.when();
         session.logins.forEach(function (login) {
           if (!login.accounts.length) {
             promise = promise.then(function () {
@@ -713,15 +774,17 @@ angular
       });
     }
 
-    function requireAccount(session) {
+    function requireAccountHelper(session) {
       var promise;
       var ldslogins;
+      var err;
 
       if (session.accounts.length) {
         return $q.when(session);
       }
 
       if (!session.logins.length) {
+        console.error("doesn't have any logins");
         return $q.reject(new Error("[Developer Error] do not call requireAccount when you have not called requireLogin."));
       }
 
@@ -730,14 +793,10 @@ angular
       });
 
       if (!ldslogins.length) {
-        return LdsApiConfig.invokeLogin({
-          hideSocial: true
-        , flashMessage: "Login with your LDS Account at least once before linking other accounts."
-        , flashMessageClass: "alert-warning"
-        }).then(function () {
-          // need to recheck accounts status
-          return requireAccount(session);
-        });
+        console.error("no lds accounts");
+        err = new Error("Login with your LDS Account at least once before linking other accounts.");
+        err.code = "E_NO_LDSACCOUNT";
+        return $q.reject(err);
       }
 
       // at this point we have a valid ldslogin, but still no ldsaccount
@@ -752,7 +811,13 @@ angular
         });
       });
 
-      return promise.then(handleOrphanLogins);
+      return promise.then(function (session) {
+        return session;
+      });
+     
+    }
+    function requireAccount(session) {
+      return requireAccountHelper(session).then(handleOrphanLogins);
     }
 
     function requireSession(opts) {
@@ -865,6 +930,43 @@ angular
       });
     };
 
+    function cloneAccount(session, account) {
+      // retrieve the most fresh token of all associated logins
+      var token = getToken(session, account);
+      var id = getId(account);
+      // We don't want to modify the original object and end up
+      // with potentially whole stakes in the local storage session key
+      account = JSON.parse(JSON.stringify(account));
+
+      account.token = token;
+      account.accountId = id;
+
+      return account;
+    }
+
+    // TODO check for account and account create if not exists in requireSession
+    function selectAccount(session, accountId) {
+      // needs to return the account with a valid login
+      var account;
+      if (!accountId) {
+        accountId = session.accountId;
+      }
+
+      session.accounts.some(function (a) {
+        if (!accountId || accountId === getId(a)) {
+          account = a;
+          return true;
+        }
+      });
+
+      account = cloneAccount(session, account);
+      session.accountId = account.accountId;
+      session.id = account.accountId;
+      session.token = account.token;
+
+      return account;
+    }
+
     LdsIoSession = {
       usernameMinLength: 4
     , secretMinLength: 8
@@ -920,6 +1022,8 @@ angular
       }
     , checkSession: checkSession
     , requireSession: requireSession
+    , requireAccount: requireAccount
+    , selectAccount: selectAccount
     , openAuthorizationDialog: function () {
         // this is intended for the resourceOwnerPassword strategy
         return LdsApiConfig.invokeLogin();
@@ -963,6 +1067,9 @@ angular
         opts.background = true;
         return LdsIoSession.implicitGrantLogin(opts);
       }
+    , getToken: getToken
+    , getId: getId
+    , cloneAccount: cloneAccount
     , debug: {
         refreshCurrentAccount: refreshCurrentAccount
       , updateSession: updateSession
@@ -989,7 +1096,8 @@ angular
   , '$http'
   , 'LdsApiConfig'
   , 'LdsApiCache'
-  , function LdsApiRequest($window, $timeout, $q, $http, LdsApiConfig, LdsApiCache) {
+  , 'LdsApiSession'
+  , function LdsApiRequest($window, $timeout, $q, $http, LdsApiConfig, LdsApiCache, LdsApiSession) {
     var LdsIoApi;
     var promises = {};
 
@@ -1069,10 +1177,98 @@ angular
       });
     }
 
+    function getLeadership(members) {
+      var honchos = { membershipClerks: [] };
+
+      members.forEach(function (member) {
+        if (!Array.isArray(member.callings)) {
+          // each member should have an array of callings, even if empty
+          // so this is just a sanity check
+          return;
+        }
+
+        member.callings.forEach(function (calling) {
+          if ("Bishopric" === calling.name || 4 === calling.typeId) {
+            honchos.bishop = member;
+          }
+          if ("Bishopric First Counselor" === calling.name || 54 === calling.typeId) {
+            honchos.firstCounselor = member;
+          }
+          if ("Bishopric Second Counselor" === calling.name || 55 === calling.typeId) {
+            honchos.secondCounselor = member;
+          }
+          if ("Ward Executive Secretary" === calling.name || 56 === calling.typeId) {
+            honchos.executiveSecretary = member;
+          }
+          if ("Ward Clerk" === calling.name || 57 === calling.typeId) {
+            honchos.clerk = member;
+          }
+          /*
+          if ("Ward Assistant Clerk" === calling.name || 58 === calling.typeId) {
+            honchos.assistant = member;
+          }
+          */
+          if ("Ward Assistant Clerk--Membership" === calling.name || 787 === calling.typeId) {
+            honchos.membershipClerks.push(member);
+          }
+        });
+      });
+
+      return honchos;
+    }
+
+    function mergeProfile(session/*, opts*/) {
+      return LdsIoApi.me(session).then(function (me) {
+        // TODO which ward has admin rights rather than home ward
+        // if (opts.home) // if (opts.called)
+        return LdsIoApi.ward(session, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+          var membersMap = {};
+          var member;
+          var homesMap = {};
+          var home;
+          var leaders;
+
+          ward.members.forEach(function (m) {
+            membersMap[m.appScopedId] = m;
+          });
+
+          ward.homes.forEach(function (h) {
+            homesMap[h.appScopedId] = h;
+          });
+
+          member = membersMap[me.appScopedId];
+          home = homesMap[member.homeAppScopedId];
+
+          leaders = getLeadership(ward.members);
+
+          Object.keys(member).forEach(function (key) {
+            me[key] = member[key];
+          });
+
+          return {
+            me: me
+          , home: home
+          , leaders: leaders
+          , ward: ward
+            // TODO get stake for this ward
+          , stake: {
+              appScopedId: me.homeStakeAppScopedId
+            , name: me.homeStakeName
+            }
+          , membersMap: membersMap
+          , homesMap: homesMap
+          };
+        });
+      });
+    }
+
+    // TODO wrap with promises so that if a call is made before a prior call finishes,
+    // it's just one call
     LdsIoApi = {
       init: function () {
       }
-    , profile: function (session, opts) {
+    , profile: mergeProfile
+    , me: function (session, opts) {
         var id = session.id + '.me';
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + session.id + '/me';
 
@@ -1150,6 +1346,10 @@ angular
         );
       }
     , photoUrl: function (session, photo, size, type) {
+        if (!getId(photo)) {
+          console.warn(photo);
+          throw new Error("photo doesn't have an id");
+        }
         // https://lds.io/api/ldsio/<accountId>/photos/individual/<appScopedId>/<date>/medium/<whatever>.jpg
         return LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id 
@@ -1158,6 +1358,30 @@ angular
           + '/' + (size || 'medium') + '/' + getId(photo) + '.jpg'
           + '?access_token=' + session.token
           ;
+      }
+    , getAccountSummaries: function getAccountSummaries(session) {
+        var promises = [];
+        var accounts = [];
+
+        session.accounts.forEach(function (account) {
+          account = LdsApiSession.cloneAccount(session, account);
+          accounts.push(account);
+
+          promises.push(LdsIoApi.profile(account).then(function (profile) {
+            // TODO get a slim profile?
+            account.profile = profile; 
+          }));
+        });
+
+        return $q.all(promises).then(function () {
+          // get the most recently added account as the first in the list
+          // (they should already be sorted this way)
+          accounts.sort(function (a, b) {
+            return new Date(b.addedAt).valueOf() - new Date(a.addedAt).valueOf();
+          });
+
+          return accounts;
+        });
       }
     , guessGender: function (m) {
         var men = [ 'highPriest', 'high_priest', 'highpriest', 'elder', 'priest', 'teacher', 'deacon' ];
