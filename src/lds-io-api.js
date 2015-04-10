@@ -9,7 +9,8 @@ angular
   , '$http'
   , 'LdsApiConfig'
   , 'LdsApiCache'
-  , function LdsApiRequest($window, $timeout, $q, $http, LdsApiConfig, LdsApiCache) {
+  , 'LdsApiSession'
+  , function LdsApiRequest($window, $timeout, $q, $http, LdsApiConfig, LdsApiCache, LdsApiSession) {
     var LdsIoApi;
     var promises = {};
 
@@ -129,7 +130,7 @@ angular
       return honchos;
     }
 
-    function mergeProfile(session, opts) {
+    function mergeProfile(session/*, opts*/) {
       return LdsIoApi.me(session).then(function (me) {
         // TODO which ward has admin rights rather than home ward
         // if (opts.home) // if (opts.called)
@@ -258,6 +259,10 @@ angular
         );
       }
     , photoUrl: function (session, photo, size, type) {
+        if (!getId(photo)) {
+          console.warn(photo);
+          throw new Error("photo doesn't have an id");
+        }
         // https://lds.io/api/ldsio/<accountId>/photos/individual/<appScopedId>/<date>/medium/<whatever>.jpg
         return LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id 
@@ -266,6 +271,30 @@ angular
           + '/' + (size || 'medium') + '/' + getId(photo) + '.jpg'
           + '?access_token=' + session.token
           ;
+      }
+    , getAccountSummaries: function getAccountSummaries(session) {
+        var promises = [];
+        var accounts = [];
+
+        session.accounts.forEach(function (account) {
+          account = LdsApiSession.cloneAccount(session, account);
+          accounts.push(account);
+
+          promises.push(LdsIoApi.profile(account).then(function (profile) {
+            // TODO get a slim profile?
+            account.profile = profile; 
+          }));
+        });
+
+        return $q.all(promises).then(function () {
+          // get the most recently added account as the first in the list
+          // (they should already be sorted this way)
+          accounts.sort(function (a, b) {
+            return new Date(b.addedAt).valueOf() - new Date(a.addedAt).valueOf();
+          });
+
+          return accounts;
+        });
       }
     , guessGender: function (m) {
         var men = [ 'highPriest', 'high_priest', 'highpriest', 'elder', 'priest', 'teacher', 'deacon' ];

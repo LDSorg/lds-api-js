@@ -35,12 +35,20 @@ angular
         if (d.winref) {
           d.winref.close(); 
         }
+        if (d.$iframe) {
+          d.$iframe.remove();
+        }
       }
 
       d.promise.then(closeWindow).catch(closeWindow);
 
       if (!state) {
         d.reject(new Error("could not parse state from login"));
+        return;
+      }
+
+      if (stateParams.logout || stateParams.close) {
+        d.resolve();
         return;
       }
 
@@ -95,6 +103,7 @@ angular
     function getToken(session, accountId) {
       var logins = [];
       var login;
+      accountId = getId(accountId) || accountId;
 
       // search logins first because we know we're actually
       // logged in with said login, y'know?
@@ -175,6 +184,7 @@ angular
         session.accountId = getId(session.accounts[0]);
         session.id = session.accountId;
         session.token = session.accountId && getToken(session, session.accountId) || null;
+        session.userVerifiedAt = session.accounts[0].userVerifiedAt;
         return;
       }
 
@@ -183,27 +193,16 @@ angular
           session.accountId = getId(account);
           session.id = session.accountId;
           session.token = session.accountId && getToken(session, session.accountId) || null;
+          session.userVerifiedAt = account.userVerifiedAt;
         }
       })) {
         session.accountId = null;
         session.id = null;
         session.token = null;
+        session.userVerifiedAt = null;
       }
     }
 
-    /*
-    function selectAccount(session, id) {
-      var token = getToken(session, id);
-      if (token) {
-        session.token = token;
-        session.accountId = id;
-        session.id = id;
-      } else {
-        throw new Error('[Developer Error] it should not be possible to select a logged out account');
-      }
-    }
-    */
-    
     function updateSession(session, login, accounts) {
       login.addedAt = login.addedAt || Date.now();
 
@@ -315,23 +314,18 @@ angular
     }
 
     function logout() {
-      // TODO also logout of lds.io
-      /*
-      return $http.delete(
-        apiPrefix + '/session'
-      , { headers: { 'Authorization': 'Bearer ' + shared.session.token } }
-      ).then(function () {
-        return destroy();
-      });
-      */
+      var state = Math.random();
+      var d = $q.defer();
 
-      var url = LdsApiConfig.providerUri + LdsApiConfig.logoutIframe;
-      var $iframe = $('<iframe src="' + url + '" width="1px" height="1px" style="opacity: 0.01;" frameborder="0"></iframe>');
-      $('body').append($iframe);
-      
-      return $timeout(function () {
-        $iframe.remove();
-      }, 500).then(function () {
+      loginPromises[state] = d;
+      Oauth3.states[state] = { close: true, logout: true };
+
+      var url = LdsApiConfig.realProviderUri + '/oauth3.html?close=true&state=' + state;
+      d.$iframe = $('<iframe src="' + url
+        + '" width="1px" height="1px" style="opacity: 0.01;" frameborder="0"></iframe>');
+      $('body').append(d.$iframe);
+
+      return d.promise.then(function () {
         return destroy();
       });
     }
@@ -384,7 +378,7 @@ angular
       }
 
       // This is for client-side (implicit grant) oauth2
-      winref = $window.open(url, 'ldsioLogin', 'height=720,width=620');
+      winref = $window.open(url, 'ldsioLogin' + Math.random(), 'height=720,width=620');
       loginPromises[state].winref = winref;
 
       return promise;
@@ -442,10 +436,11 @@ angular
       , logins: [{
           // TODO make appScopedIds even for root app
           id: login.appScopedId || login.app_scoped_id || login.loginId || login.login_id || login.id 
+        , token: login.token || login.accessToken || login.accessToken
         }]
       }, { 
         headers: {
-          authorization: 'Bearer: ' + login.token
+          Authorization: 'Bearer ' + login.token
         }
       }).then(function (resp) {
         return resp.data;
@@ -461,6 +456,7 @@ angular
         url
       , { logins: [{
           id: login.appScopedId || login.app_scoped_id || login.loginId || login.login_id || login.id 
+        , token: login.token || login.accessToken || login.accessToken
         }] }
       ).then(function (resp) {
         if (!resp.data) {
@@ -661,6 +657,43 @@ angular
       });
     };
 
+    function cloneAccount(session, account) {
+      // retrieve the most fresh token of all associated logins
+      var token = getToken(session, account);
+      var id = getId(account);
+      // We don't want to modify the original object and end up
+      // with potentially whole stakes in the local storage session key
+      account = JSON.parse(JSON.stringify(account));
+
+      account.token = token;
+      account.accountId = id;
+
+      return account;
+    }
+
+    // TODO check for account and account create if not exists in requireSession
+    function selectAccount(session, accountId) {
+      // needs to return the account with a valid login
+      var account;
+      if (!accountId) {
+        accountId = session.accountId;
+      }
+
+      session.accounts.some(function (a) {
+        if (!accountId || accountId === getId(a)) {
+          account = a;
+          return true;
+        }
+      });
+
+      account = cloneAccount(session, account);
+      session.accountId = account.accountId;
+      session.id = account.accountId;
+      session.token = account.token;
+
+      return account;
+    }
+
     LdsIoSession = {
       usernameMinLength: 4
     , secretMinLength: 8
@@ -717,6 +750,7 @@ angular
     , checkSession: checkSession
     , requireSession: requireSession
     , requireAccount: requireAccount
+    , selectAccount: selectAccount
     , openAuthorizationDialog: function () {
         // this is intended for the resourceOwnerPassword strategy
         return LdsApiConfig.invokeLogin();
@@ -760,6 +794,9 @@ angular
         opts.background = true;
         return LdsIoSession.implicitGrantLogin(opts);
       }
+    , getToken: getToken
+    , getId: getId
+    , cloneAccount: cloneAccount
     , debug: {
         refreshCurrentAccount: refreshCurrentAccount
       , updateSession: updateSession
