@@ -125,9 +125,8 @@ LdsApiCache
 
 This is a layer atop `LdsApiStorage`, and used by `LdsApiRequest`. You may find it useful for your own applications as it guarantees that any existing data will be returned and stale data will be refreshed in the background.
 
-* `LdsApiCache.read(id, x, fetch, opts)`
+* `LdsApiCache.read(id, fetch, opts)`
   * `id` is the id that should be used
-  * `x` is an obsolete parameter and will be removed in 1.0.0 (no code change will be necessary on your end)
   * `fetch()` must be a promise. It will be called if the data is not in cache or needs to be refreshed
     * (this was abstracted out so that the code can easily be shared between node, jQuery, angular, etc)
   * `opts` such as `{ expire: true }`
