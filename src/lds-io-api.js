@@ -39,8 +39,10 @@ angular
         delete promises[id];
 
         if (!resp.data) {
-          window.alert("[SANITY FAIL] '" + url + "' returned nothing (not even an error)");
-          return;
+          // This seems to happen on abort...
+          return $q.reject("no data returned, the request may have been aborted");
+          //window.alert("[SANITY FAIL] '" + url + "' returned nothing (not even an error)");
+          //return;
         }
 
         if (resp.data.error) {
