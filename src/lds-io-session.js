@@ -404,15 +404,16 @@ angular
       });
     }
 
-    function login(oauthscope, opts) {
+    function login(opts) {
+      opts = opts || {};
       // TODO note that this must be called on a click event
       // otherwise the browser will block the popup
       function forceLogin() {
-        return logins.implicitGrant({ popup: true, scope: oauthscope });
+        return logins.implicitGrant({ popup: true, scope: opts.scope });
       }
 
       // TODO check for scope in session
-      return checkSession(oauthscope).then(function (session) {
+      return checkSession(opts.scope).then(function (session) {
         if (!session.id || opts && opts.force) {
           return forceLogin();
         }
@@ -765,7 +766,7 @@ angular
           promise = $q.reject();
         }
 
-        promise.then(function () {
+        return promise.then(function () {
           return restore().then(function (session) {
             var promise = $q.when();
 

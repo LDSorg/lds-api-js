@@ -81,7 +81,8 @@ LdsApiSession
 -------------
 
 * `LdsApiSession.backgroundLogin()`                         // attempts login via oauth3 iframe
-* `LdsApiSession.login()`                                   // opens Authorization Dialog, must be attached to a click handler
+* `LdsApiSession.login(opts)`                                   // opens Authorization Dialog, must be attached to a click handler
+  * opts.scope // array or string
 * `LdsApiSession.logout()`             // opens iframe with logout
 * `LdsApiSession.onLogin($scope, fn)`  // fires when switching from logged out to logged in
 * `LdsApiSession.onLogout($scope, fn)` // fires when switching from logged in to logged out
