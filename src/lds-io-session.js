@@ -316,6 +316,7 @@ angular
     function logout() {
       var state = Math.random();
       var d = $q.defer();
+      var pd = destroy();
 
       loginPromises[state] = d;
       Oauth3.states[state] = { close: true, logout: true };
@@ -326,7 +327,8 @@ angular
       $('body').append(d.$iframe);
 
       return d.promise.then(function () {
-        return destroy();
+        // TODO return destroy();
+        return pd;
       });
     }
 
