@@ -556,8 +556,7 @@ angular
       });
     }
 
-    function testLoginAccounts(login) {
-      // TODO cache this also, but with a shorter shelf life?
+    function accounts(login) {
       return $http.get(
         LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/accounts' + '?camel=true'
@@ -578,6 +577,13 @@ angular
           return $q.reject(new Error("could not verify login")); // destroy();
         }
 
+        return accounts;
+      });
+    }
+
+    function testLoginAccounts(login) {
+      // TODO cache this also, but with a shorter shelf life?
+      return LdsIoSession.accounts(login).then(function (accounts) {
         return { login: login, accounts: accounts };
       }, function (err) {
         console.error("[Error] couldn't get accounts (might not be linked)");
@@ -589,6 +595,7 @@ angular
     function logout() {
       var state = Math.random();
       var d = $q.defer();
+      var pd = destroy();
 
       loginPromises[state] = d;
       Oauth3.states[state] = { close: true, logout: true };
@@ -599,7 +606,8 @@ angular
       $('body').append(d.$iframe);
 
       return d.promise.then(function () {
-        return destroy();
+        // TODO return destroy();
+        return pd;
       });
     }
 
@@ -677,15 +685,16 @@ angular
       });
     }
 
-    function login(oauthscope, opts) {
+    function login(opts) {
+      opts = opts || {};
       // TODO note that this must be called on a click event
       // otherwise the browser will block the popup
       function forceLogin() {
-        return logins.implicitGrant({ popup: true, scope: oauthscope });
+        return logins.implicitGrant({ popup: true, scope: opts.scope });
       }
 
       // TODO check for scope in session
-      return checkSession(oauthscope).then(function (session) {
+      return checkSession(opts.scope).then(function (session) {
         if (!session.id || opts && opts.force) {
           return forceLogin();
         }
@@ -970,6 +979,7 @@ angular
     LdsIoSession = {
       usernameMinLength: 4
     , secretMinLength: 8
+    , accounts: accounts
     , validateUsername: function (ldsaccount) {
         if ('string' !== typeof ldsaccount) {
           throw new Error("[Developer Error] ldsaccount should be a string");
@@ -1038,7 +1048,7 @@ angular
           promise = $q.reject();
         }
 
-        promise.then(function () {
+        return promise.then(function () {
           return restore().then(function (session) {
             var promise = $q.when();
 
@@ -1126,8 +1136,10 @@ angular
         delete promises[id];
 
         if (!resp.data) {
-          window.alert("[SANITY FAIL] '" + url + "' returned nothing (not even an error)");
-          return;
+          // This seems to happen on abort...
+          return $q.reject("no data returned, the request may have been aborted");
+          //window.alert("[SANITY FAIL] '" + url + "' returned nothing (not even an error)");
+          //return;
         }
 
         if (resp.data.error) {
@@ -1268,12 +1280,13 @@ angular
       init: function () {
       }
     , profile: mergeProfile
-    , me: function (session, opts) {
-        var id = session.id + '.me';
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + session.id + '/me';
+    , me: function (account, opts) {
+        // NOTE: account may also be a session object with an accountId and token
+        var id = getId(account) + '.me';
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + getId(account) + '/me';
 
         return promiseApiCall(
-          session
+          account
         , id
         , url
         , opts
@@ -1352,24 +1365,24 @@ angular
         }
         // https://lds.io/api/ldsio/<accountId>/photos/individual/<appScopedId>/<date>/medium/<whatever>.jpg
         return LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + session.id 
+          + '/' + getId(session)
           + '/photos/' + (type || photo.type)
           + '/' + getId(photo) + '/' + (photo.updated || photo.updated_at || photo.updatedAt || 'bad-updated-at')
           + '/' + (size || 'medium') + '/' + getId(photo) + '.jpg'
           + '?access_token=' + session.token
           ;
       }
-    , getAccountSummaries: function getAccountSummaries(session) {
+    , getAccountSummaries: function getAccountSummaries(session, accounts) {
         var promises = [];
-        var accounts = [];
+        accounts = accounts || [];
 
         session.accounts.forEach(function (account) {
           account = LdsApiSession.cloneAccount(session, account);
-          accounts.push(account);
 
           promises.push(LdsIoApi.profile(account).then(function (profile) {
             // TODO get a slim profile?
             account.profile = profile; 
+            accounts.push(account);
           }));
         });
 

@@ -183,12 +183,13 @@ angular
       init: function () {
       }
     , profile: mergeProfile
-    , me: function (session, opts) {
-        var id = session.id + '.me';
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + session.id + '/me';
+    , me: function (account, opts) {
+        // NOTE: account may also be a session object with an accountId and token
+        var id = getId(account) + '.me';
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + getId(account) + '/me';
 
         return promiseApiCall(
-          session
+          account
         , id
         , url
         , opts

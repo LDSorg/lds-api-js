@@ -283,8 +283,7 @@ angular
       });
     }
 
-    function testLoginAccounts(login) {
-      // TODO cache this also, but with a shorter shelf life?
+    function accounts(login) {
       return $http.get(
         LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/accounts' + '?camel=true'
@@ -305,6 +304,13 @@ angular
           return $q.reject(new Error("could not verify login")); // destroy();
         }
 
+        return accounts;
+      });
+    }
+
+    function testLoginAccounts(login) {
+      // TODO cache this also, but with a shorter shelf life?
+      return LdsIoSession.accounts(login).then(function (accounts) {
         return { login: login, accounts: accounts };
       }, function (err) {
         console.error("[Error] couldn't get accounts (might not be linked)");
@@ -700,6 +706,7 @@ angular
     LdsIoSession = {
       usernameMinLength: 4
     , secretMinLength: 8
+    , accounts: accounts
     , validateUsername: function (ldsaccount) {
         if ('string' !== typeof ldsaccount) {
           throw new Error("[Developer Error] ldsaccount should be a string");
