@@ -267,24 +267,24 @@ angular
         }
         // https://lds.io/api/ldsio/<accountId>/photos/individual/<appScopedId>/<date>/medium/<whatever>.jpg
         return LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + session.id 
+          + '/' + getId(session)
           + '/photos/' + (type || photo.type)
           + '/' + getId(photo) + '/' + (photo.updated || photo.updated_at || photo.updatedAt || 'bad-updated-at')
           + '/' + (size || 'medium') + '/' + getId(photo) + '.jpg'
           + '?access_token=' + session.token
           ;
       }
-    , getAccountSummaries: function getAccountSummaries(session) {
+    , getAccountSummaries: function getAccountSummaries(session, accounts) {
         var promises = [];
-        var accounts = [];
+        accounts = accounts || [];
 
         session.accounts.forEach(function (account) {
           account = LdsApiSession.cloneAccount(session, account);
-          accounts.push(account);
 
           promises.push(LdsIoApi.profile(account).then(function (profile) {
             // TODO get a slim profile?
             account.profile = profile; 
+            accounts.push(account);
           }));
         });
 
