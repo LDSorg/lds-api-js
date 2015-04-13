@@ -183,6 +183,29 @@ angular
       init: function () {
       }
     , profile: mergeProfile
+    , raw: function (account, rawUrl, params, opts) {
+        params = params || {};
+
+        if (!rawUrl) {
+          throw new Error("no rawUrl provided");
+        }
+
+        Object.keys(params).forEach(function (key) {
+          var val = params[key];
+          rawUrl = rawUrl.replace(':' + key, encodeURIComponent(val));
+        });
+
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/' + getId(account) + '/debug/raw?url=' + encodeURIComponent(rawUrl);
+        var id = url;
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
     , me: function (account, opts) {
         // NOTE: account may also be a session object with an accountId and token
         var id = getId(account) + '.me';
