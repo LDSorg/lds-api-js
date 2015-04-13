@@ -214,7 +214,7 @@ angular
         if (!stakeId) {
           throw new Error("no stake id provided");
         }
-        var id = session.id + 'stake.' + stakeId;
+        var id = session.id + '.stake.' + stakeId;
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/photos';
 
@@ -232,7 +232,7 @@ angular
         if (!wardId) {
           throw new Error("no ward id provided");
         }
-        var id = session.id + 'stake.' + stakeId + '.ward.' + wardId;
+        var id = session.id + '.stake.' + stakeId + '.ward.' + wardId;
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId;
 
@@ -250,7 +250,7 @@ angular
         if (!wardId) {
           throw new Error("no ward id provided");
         }
-        var id = session.id + 'stake.' + stakeId + '.ward.' + wardId + '.photos';
+        var id = session.id + '.stake.' + stakeId + '.ward.' + wardId + '.photos';
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId + '/photos';
 
