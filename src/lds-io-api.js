@@ -68,7 +68,7 @@ angular
       return LdsApiCache.read(id, function () {
         var d = $q.defer();
 
-        var token = $timeout(function () {
+        var kotoken = $timeout(function () {
           if (opts.tried) {
             d.reject(new Error("timed out (twice) when attempting to get data"));
             return;
@@ -79,16 +79,17 @@ angular
         }, opts.tried && 16000 || 8000); 
 
         realGet(session, id, url).then(function (data) {
-          $timeout.cancel(token);
+          $timeout.cancel(kotoken);
           return d.resolve(data);
         }, function (err) {
-          $timeout.cancel(token);
+          $timeout.cancel(kotoken);
           return d.reject(err);
         });
 
         return d.promise;
       }, opts).then(function (data) {
-        return data.value;
+        // TODO, just data.value (after bugfix)
+        return data.value && data.value.value || data.value;
       });
     }
 
@@ -132,11 +133,11 @@ angular
       return honchos;
     }
 
-    function mergeProfile(session/*, opts*/) {
-      return LdsIoApi.me(session).then(function (me) {
+    function mergeProfile(account/*, opts*/) {
+      return LdsIoApi.me(account).then(function (me) {
         // TODO which ward has admin rights rather than home ward
         // if (opts.home) // if (opts.called)
-        return LdsIoApi.ward(session, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+        return LdsIoApi.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
           var membersMap = {};
           var member;
           var homesMap = {};

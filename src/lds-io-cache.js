@@ -30,13 +30,23 @@ angular
       });
     }
 
-    function read(id, fetch, opts) {
+    function read(id, realFetch, opts) {
       var refreshWait = refreshIn;
       var uselessWait = uselessIn;
       var fresh;
       var usable;
       var now;
       var promise;
+
+      function fetch() {
+        return realFetch().then(function (result) {
+          if ('string' === typeof result) {
+            // TODO explicit option for strings
+            return $q.reject("expected json, but got a string, which is probably an error");
+          }
+          return fin(result);
+        });
+      }
 
       function fin(value) {
         promise = null;
@@ -53,18 +63,22 @@ angular
         usable = now - caches[id] < uselessWait;
         fresh = now - caches[id] < refreshWait;
         if (!fresh) {
-          promise = fetch().then(fin);
+          promise = fetch();
         }
       }
 
       return LdsApiStorage.get(id).then(function (result) {
+        if ('string' === typeof result) {
+          // TODO explicit option
+          return (promise || fetch());
+        }
         if (usable) {
           return $q.when({ updated: caches[id], value: result, stale: !fresh });
         } else {
-          return (promise || fetch()).then(fin);
+          return (promise || fetch());
         }
       }, function () {
-        return (promise || fetch()).then(fin);
+        return (promise || fetch());
       });
     }
 

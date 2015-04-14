@@ -214,13 +214,23 @@ angular
       });
     }
 
-    function read(id, fetch, opts) {
+    function read(id, realFetch, opts) {
       var refreshWait = refreshIn;
       var uselessWait = uselessIn;
       var fresh;
       var usable;
       var now;
       var promise;
+
+      function fetch() {
+        return realFetch().then(function (result) {
+          if ('string' === typeof result) {
+            // TODO explicit option for strings
+            return $q.reject("expected json, but got a string, which is probably an error");
+          }
+          return fin(result);
+        });
+      }
 
       function fin(value) {
         promise = null;
@@ -237,18 +247,22 @@ angular
         usable = now - caches[id] < uselessWait;
         fresh = now - caches[id] < refreshWait;
         if (!fresh) {
-          promise = fetch().then(fin);
+          promise = fetch();
         }
       }
 
       return LdsApiStorage.get(id).then(function (result) {
+        if ('string' === typeof result) {
+          // TODO explicit option
+          return (promise || fetch());
+        }
         if (usable) {
           return $q.when({ updated: caches[id], value: result, stale: !fresh });
         } else {
-          return (promise || fetch()).then(fin);
+          return (promise || fetch());
         }
       }, function () {
-        return (promise || fetch()).then(fin);
+        return (promise || fetch());
       });
     }
 
@@ -456,6 +470,7 @@ angular
       if (1 === session.accounts.length) {
         session.accountId = getId(session.accounts[0]);
         session.id = session.accountId;
+        session.appScopedId = session.accountId;
         session.token = session.accountId && getToken(session, session.accountId) || null;
         session.userVerifiedAt = session.accounts[0].userVerifiedAt;
         return;
@@ -465,12 +480,14 @@ angular
         if (session.accountId === getId(account)) {
           session.accountId = getId(account);
           session.id = session.accountId;
+          session.appScopedId = session.accountId;
           session.token = session.accountId && getToken(session, session.accountId) || null;
           session.userVerifiedAt = account.userVerifiedAt;
         }
       })) {
         session.accountId = null;
         session.id = null;
+        session.appScopedId = null;
         session.token = null;
         session.userVerifiedAt = null;
       }
@@ -526,19 +543,58 @@ angular
       return $q.when(shared.session);
     }
 
+    function sanityCheckAccounts(session) {
+      var promise;
+
+      // XXX this is just a bugfix for previously deployed code
+      // it probably only affects about 10 users and can be deleted
+      // at some point in the future (or left as a sanity check)
+
+      if (session.accounts.every(function (account) {
+        if (account.appScopedId) {
+          return true;
+        }
+      })) {
+        return $q.when(session);
+      }
+
+      promise = $q.when();
+      session.logins.forEach(function (login) {
+        promise = promise.then(function () {
+          return testLoginAccounts(login).then(save);
+        });
+      });
+
+      return promise.then(function (session) {
+        return session;
+      }, function () {
+        // this is just bad news...
+        return LdsApiCache.destroy().then(function () {
+          $window.alert("Sorry, but an error occurred which can only be fixed by logging you out"
+            + " and refreshing the page.\n\nThis will happen automatically.\n\nIf you get this"
+            + " message even after the page refreshes, please contact support@ldsconnectorg."
+          );
+          $window.location.reload();
+          return $q.reject(new Error("A session error occured. You must log out and log back in."));
+        });
+      });
+    }
+
     function restore() {
       // Being very careful not to trigger a false onLogin or onLogout via $watch
       var storedSession;
 
       if (shared.session.token) {
-        return $q.when(shared.session);
+        return sanityCheckAccounts(shared.session);
+        // return $q.when(shared.session);
       }
 
       storedSession = JSON.parse(localStorage.getItem('io.lds.session') || null) || createSession();
 
       if (storedSession.token) {
         shared.session = storedSession;
-        return $q.when(shared.session);
+        return sanityCheckAccounts(shared.session);
+        //return $q.when(shared.session);
       } else {
         return $q.reject(new Error("No Session"));
       }
@@ -695,7 +751,7 @@ angular
 
       // TODO check for scope in session
       return checkSession(opts.scope).then(function (session) {
-        if (!session.id || opts && opts.force) {
+        if (!session.appScopedId || opts && opts.force) {
           return forceLogin();
         }
 
@@ -731,15 +787,17 @@ angular
       });
     }
 
-    function attachLoginToAccount(account, login) {
-      var url = LdsApiConfig.providerUri + '/api' + '/accounts/' + account.id + '/logins';
+    function attachLoginToAccount(session, account, newLogin) {
+      var url = LdsApiConfig.providerUri + '/api' + '/accounts/' + account.appScopedId + '/logins';
+      var token = getToken(session, account);
 
       return $http.post(
         url
       , { logins: [{
-          id: login.appScopedId || login.app_scoped_id || login.loginId || login.login_id || login.id 
-        , token: login.token || login.accessToken || login.accessToken
+          id: newLogin.appScopedId || newLogin.app_scoped_id || newLogin.loginId || newLogin.login_id || newLogin.id 
+        , token: newLogin.token || newLogin.accessToken || newLogin.access_token
         }] }
+      , { headers: { 'Authorization': 'Bearer ' + token } }
       ).then(function (resp) {
         if (!resp.data) {
           return $q.reject(new Error("no response when linking login to account"));
@@ -772,7 +830,7 @@ angular
         session.logins.forEach(function (login) {
           if (!login.accounts.length) {
             promise = promise.then(function () {
-              return attachLoginToAccount(session.accounts[0], login);
+              return attachLoginToAccount(session, session.accounts[0], login);
             });
           }
         });
@@ -948,7 +1006,8 @@ angular
       account = JSON.parse(JSON.stringify(account));
 
       account.token = token;
-      account.accountId = id;
+      account.accountId = account.accountId || account.appScopedId || id;
+      account.appScopedId = account.appScopedId || id;
 
       return account;
     }
@@ -971,6 +1030,7 @@ angular
       account = cloneAccount(session, account);
       session.accountId = account.accountId;
       session.id = account.accountId;
+      session.appScopedId = account.accountId;
       session.token = account.token;
 
       return account;
@@ -1165,7 +1225,7 @@ angular
       return LdsApiCache.read(id, function () {
         var d = $q.defer();
 
-        var token = $timeout(function () {
+        var kotoken = $timeout(function () {
           if (opts.tried) {
             d.reject(new Error("timed out (twice) when attempting to get data"));
             return;
@@ -1176,16 +1236,17 @@ angular
         }, opts.tried && 16000 || 8000); 
 
         realGet(session, id, url).then(function (data) {
-          $timeout.cancel(token);
+          $timeout.cancel(kotoken);
           return d.resolve(data);
         }, function (err) {
-          $timeout.cancel(token);
+          $timeout.cancel(kotoken);
           return d.reject(err);
         });
 
         return d.promise;
       }, opts).then(function (data) {
-        return data.value;
+        // TODO, just data.value (after bugfix)
+        return data.value && data.value.value || data.value;
       });
     }
 
@@ -1229,11 +1290,11 @@ angular
       return honchos;
     }
 
-    function mergeProfile(session/*, opts*/) {
-      return LdsIoApi.me(session).then(function (me) {
+    function mergeProfile(account/*, opts*/) {
+      return LdsIoApi.me(account).then(function (me) {
         // TODO which ward has admin rights rather than home ward
         // if (opts.home) // if (opts.called)
-        return LdsIoApi.ward(session, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+        return LdsIoApi.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
           var membersMap = {};
           var member;
           var homesMap = {};
@@ -1280,6 +1341,29 @@ angular
       init: function () {
       }
     , profile: mergeProfile
+    , raw: function (account, rawUrl, params, opts) {
+        params = params || {};
+
+        if (!rawUrl) {
+          throw new Error("no rawUrl provided");
+        }
+
+        Object.keys(params).forEach(function (key) {
+          var val = params[key];
+          rawUrl = rawUrl.replace(':' + key, encodeURIComponent(val));
+        });
+
+        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
+          + '/' + getId(account) + '/debug/raw?url=' + encodeURIComponent(rawUrl);
+        var id = url;
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
     , me: function (account, opts) {
         // NOTE: account may also be a session object with an accountId and token
         var id = getId(account) + '.me';
@@ -1311,7 +1395,7 @@ angular
         if (!stakeId) {
           throw new Error("no stake id provided");
         }
-        var id = session.id + 'stake.' + stakeId;
+        var id = session.id + '.stake.' + stakeId;
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/photos';
 
@@ -1329,7 +1413,7 @@ angular
         if (!wardId) {
           throw new Error("no ward id provided");
         }
-        var id = session.id + 'stake.' + stakeId + '.ward.' + wardId;
+        var id = session.id + '.stake.' + stakeId + '.ward.' + wardId;
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId;
 
@@ -1347,7 +1431,7 @@ angular
         if (!wardId) {
           throw new Error("no ward id provided");
         }
-        var id = session.id + 'stake.' + stakeId + '.ward.' + wardId + '.photos';
+        var id = session.id + '.stake.' + stakeId + '.ward.' + wardId + '.photos';
         var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
           + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId + '/photos';
 
