@@ -459,7 +459,23 @@ angular
       // TODO note that this must be called on a click event
       // otherwise the browser will block the popup
       function forceLogin() {
-        return logins.implicitGrant({ popup: true, scope: opts.scope });
+       var promise;
+
+       // TODO always get implicitGrant (for client)
+       // and optionally do authorizationCode (for server session)
+       if (opts.authorizationRedirect) {
+         promise = logins.authorizationRedirect({ popup: true, scope: opts.scope });
+       } else {
+         promise = logins.implicitGrant({ popup: true, scope: opts.scope });
+       }
+
+       return promise;
+
+       /*
+       promise.then(function () {
+         return logins.implicitGrant({ background: true, scope: opts.scope });
+       });
+       */
       }
 
       // TODO check for scope in session
