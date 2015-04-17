@@ -15,7 +15,24 @@ bower install --save oauth3
 bower install --save angular-lds-io
 ```
 
+**Development**:
+
 ```html
+<script src="bower_components/oauth3/oauth3.js"></script>
+<script src="bower_components/oauth3/angular-oauth3.js"></script>
+
+<script src="bower_components/angular-lds-io/src/lds-io-storage.js"></script>
+<script src="bower_components/angular-lds-io/src/lds-io-config.js"></script>
+<script src="bower_components/angular-lds-io/src/lds-io-cache.js"></script>
+<script src="bower_components/angular-lds-io/src/lds-io-session.js"></script>
+<script src="bower_components/angular-lds-io/src/lds-io-api.js"></script>
+<script src="bower_components/angular-lds-io/src/lds-io.js"></script>
+```
+
+**Production**:
+
+```html
+<script src="bower_components/oauth3/angular-oauth3.min.js"></script>
 <script src="bower_components/angular-lds-io/lds-io.min.js"></script>
 ```
 
@@ -80,7 +97,7 @@ LdsApi
 LdsApiSession
 -------------
 
-* `LdsApiSession.backgroundLogin()`                         // attempts login via oauth3 iframe
+* `LdsApiSession.backgroundLogin(opts)`                         // attempts login via oauth3 iframe
 * `LdsApiSession.login(opts)`                                   // opens Authorization Dialog, must be attached to a click handler
   * opts.scope // array or string
 * `LdsApiSession.logout()`             // opens iframe with logout
@@ -88,6 +105,7 @@ LdsApiSession
 * `LdsApiSession.onLogout($scope, fn)` // fires when switching from logged in to logged out
 * `LdsApiSession.checkSession()`       // resolves session or rejects nothing
 * `LdsApiSession.requireSession()`     // calls `invokeLogin()` if `checkSession()` is rejected
+* `account = LdsApiSession.selectAccount(accountId|null)`     // Select the given account by id, or the default account
 
 LdsApiRequest
 -------------
@@ -95,13 +113,25 @@ LdsApiRequest
 As long as data is not older than `LdsApiConfig.uselessWait`, it will be presented immediately.
 However, if it is older than `LdsApiConfig.refreshWait` it will refresh in the background. 
 
-* `LdsApiRequest.profile()`                                 // logged-in user's info
-* `LdsApiRequest.stake(p.homeStakeId)`                      // returns ward member data
-* `LdsApiRequest.stakePhotos(p.homeStakeId)`                // returns photo metadata
-* `LdsApiRequest.ward(p.homeStakeId, p.homeWardId)`         // returns ward member data
-* `LdsApiRequest.wardPhotos(p.homeStakeId, p.homeWardId)`   // returns photo metadata
+Account Specific
+
+* `LdsApiRequest.create(account)`             // creates wrapper that uses this account
+  * `ldsApiRequest.profile()`                                 // logged-in user's info
+  * `ldsApiRequest.stake(p.homeStakeId)`                      // returns ward member data
+  * `ldsApiRequest.stakePhotos(p.homeStakeId)`                // returns photo metadata
+  * `ldsApiRequest.ward(p.homeStakeId, p.homeWardId)`         // returns ward member data
+  * `ldsApiRequest.wardPhotos(p.homeStakeId, p.homeWardId)`   // returns photo metadata
+
+NOTE: These also all exist statelessly as `LdsApiRequest.api.<<foo>>`
+* example: LdsApiRequest.api.profile(account)
+
+Helpers
+
 * `LdsApiRequest.photoUrl(metadata)` (non-promise)          // constructs ward member photo url
 * `LdsApiRequest.guessGender(member)` (non-promise)         // returns a guess based on organizations (priest, laural, etc)
+
+TODO
+
 * TODO `.leadership(ward)` (non-promise)              // pluck important leadership callings from ward data
 * TODO `.stakeLeadership(stake)` (non-promise)        // pluck important leadership callings from stake data
 
@@ -142,12 +172,11 @@ This is just helper class. It is called by `LdsApi.init(opts)`
 
 * `LdsApiConfig.init(opts)` // Called by `LdsApi.init(opts)`
   * `invokeLogin()`         // shows UI for login and returns a promise of when login has completed
-  * `providerUri`           // misnomer this will point to the oauth3 provider ('https://ldsconnect.org'), but currently points to 'https://lds.io' because that part isn't implemented
-  * `appUri` // $window.location.protocol + '//' + $window.location.host + $window.location.pathname
+  * `providerUri`           //  ('https://ldsconnect.org'), but currently points to 'https://lds.io' because that part isn't implemented
+  * `appBaseUri` // $window.location.protocol + '//' + $window.location.host + $window.location.pathname
   * `appId`
   * `appVersion` // might be used to clear cache on version change
   * `apiPrefix` // defaults to `/api/ldsio`
-  * `logoutIframe` // `/logout.html`
   * `refreshWait` // (in milliseconds) defaults to 15 minutes
     * will not attempt to check for new data for 15 minutes
   * `uselessWait` // (in milliseconds) defaults to Inifinity
