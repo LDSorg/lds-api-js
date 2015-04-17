@@ -1,6 +1,6 @@
 {
   "name": "angular-lds-io",
-  "version": "1.0.0-rc8.1",
+  "version": "1.0.0-rc9a",
   "homepage": "https://github.com/LDSorg/angular-lds-io",
   "authors": [
     "AJ ONeal <awesome@coolaj86.com>"
@@ -26,5 +26,8 @@
     "app/bower_components",
     "test",
     "tests"
-  ]
+  ],
+  "dependencies": {
+    "oauth3": "~1.0.0-rc4.2"
+  }
 }
