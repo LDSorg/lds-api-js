@@ -418,6 +418,7 @@ angular
       // TODO note that this must be called on a click event
       // otherwise the browser will block the popup
       function forceLogin() {
+        opts.appId = LdsApiConfig.appId;
         return Oauth3.login(providerUri, opts).then(function (params) {
           return LdsIoLogins.getLoginFromTokenParams(providerUri, opts.username, params).then(function (login) {
             return testLoginAccounts(login).then(save);
