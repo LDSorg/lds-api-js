@@ -8,12 +8,11 @@ angular
   , function LdsApiConfig($window, LdsApiStorage) {
     var defaults = {
       // TODO this should be grabbed from oauth3.html?directives=true&callback=directives
-      providerUri: 'https://lds.io'
-    , realProviderUri: 'https://ldsconnect.org'
-    , appUri: $window.location.protocol + '//' + $window.location.host + $window.location.pathname
+      providerUri: 'https://ldsconnect.org'
+    , apiBaseUri: 'https://lds.io'
     , appId: null
+    , appUri: $window.location.protocol + '//' + $window.location.host + $window.location.pathname
     , apiPrefix: '/api/ldsio'
-    , logoutIframe: '/oauth3.html?logout=true'
     , refreshWait: 15 * 60 * 60 * 1000
     , uselessWait: Infinity
     // note: host includes 'port' when port is non-80 / non-443
@@ -35,9 +34,9 @@ angular
           me.providerUri = val;
           me.providerUriSet = true;
 
-          return LdsApiStorage.get('dev.realProviderUri').then(function (val2) {
-            me.realProviderUri = val2;
-            me.realProviderUriSet = true;
+          return LdsApiStorage.get('dev.apiBaseUri').then(function (val2) {
+            me.apiBaseUri = val2;
+            me.apiBaseUriSet = true;
           }, function () {
             // ignore
           });
@@ -68,24 +67,18 @@ angular
           console.log('');
           if (!me.providerUriSet) {
             console.info("Why, hello there Latter-Day Developer! Would you like to test against the beta server?");
-            console.log("    LdsIo.storage.set('dev.providerUri', 'https://beta.lds.io')");
-            console.log("    LdsIo.storage.set('dev.realProviderUri', 'https://beta.ldsconnect.org')");
+            console.log("    LdsIo.storage.set('dev.providerUri', 'https://beta.ldsconnect.org')");
+            console.log("    LdsIo.storage.set('dev.apiBaseUri', 'https://beta.lds.io')");
             console.log('');
           }
-          if (me.providerUriSet || me.realProviderUriSet) {
+          if (me.providerUriSet || me.apiBaseUriSet) {
             console.info("You're in Developer Mode! :-)");
-            console.log("    API: " + me.providerUri);
-            console.log("    UI:  " + me.realProviderUri);
+            console.log("    UI:  " + me.providerUri);
+            console.log("    API: " + me.apiBaseUri);
             console.log('');
-            if (!me.realProviderUriSet) {
-              console.warn("dev.providerUri is not yet properly implemented per spec, so also set dev.realProviderUri");
-              console.log("Example: ");
-              console.log("    LdsIo.storage.set('dev.providerUri', 'https://beta.lds.io')");
-              console.log("    LdsIo.storage.set('dev.realProviderUri', 'https://beta.ldsconnect.org')");
-              console.log('');
-            }
+
             console.log("Want to switch back to production mode?");
-            console.log("    LdsIo.storage.remove('dev.providerUri'); LdsIo.storage.remove('dev.realProviderUri');");
+            console.log("    LdsIo.storage.remove('dev.providerUri'); LdsIo.storage.remove('dev.apiBaseUri');");
             console.log('');
           }
 
