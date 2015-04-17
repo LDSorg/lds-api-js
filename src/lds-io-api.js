@@ -27,14 +27,14 @@ angular
       }
     }
 
-    function realGet(session, id, url) {
+    function realGet(account, id, url) {
       if (promises[id]) {
         return promises[id];
       }
 
       promises[id] = $http.get(
         url + '?camel=true'
-      , { headers: { 'Authorization': 'Bearer ' + session.token } }
+      , { headers: { 'Authorization': 'Bearer ' + account.token } }
       ).then(function (resp) {
         delete promises[id];
 
@@ -63,7 +63,7 @@ angular
       return promises[id];
     }
 
-    function promiseApiCall(session, id, url, opts) {
+    function promiseApiCall(account, id, url, opts) {
       opts = opts || {};
       return LdsApiCache.read(id, function () {
         var d = $q.defer();
@@ -75,10 +75,10 @@ angular
           }
 
           opts.tried = true;
-          return promiseApiCall(session, id, url, opts).then(d.resolve, d.reject);
+          return promiseApiCall(account, id, url, opts).then(d.resolve, d.reject);
         }, opts.tried && 16000 || 8000); 
 
-        realGet(session, id, url).then(function (data) {
+        realGet(account, id, url).then(function (data) {
           $timeout.cancel(kotoken);
           return d.resolve(data);
         }, function (err) {
@@ -133,178 +133,18 @@ angular
       return honchos;
     }
 
-    function mergeProfile(account/*, opts*/) {
-      return LdsIoApi.me(account).then(function (me) {
-        // TODO which ward has admin rights rather than home ward
-        // if (opts.home) // if (opts.called)
-        return LdsIoApi.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
-          var membersMap = {};
-          var member;
-          var homesMap = {};
-          var home;
-          var leaders;
-
-          ward.members.forEach(function (m) {
-            membersMap[m.appScopedId] = m;
-          });
-
-          ward.homes.forEach(function (h) {
-            homesMap[h.appScopedId] = h;
-          });
-
-          member = membersMap[me.appScopedId];
-          home = homesMap[member.homeAppScopedId];
-
-          leaders = getLeadership(ward.members);
-
-          Object.keys(member).forEach(function (key) {
-            me[key] = member[key];
-          });
-
-          return {
-            me: me
-          , home: home
-          , leaders: leaders
-          , ward: ward
-            // TODO get stake for this ward
-          , stake: {
-              appScopedId: me.homeStakeAppScopedId
-            , name: me.homeStakeName
-            }
-          , membersMap: membersMap
-          , homesMap: homesMap
-          };
-        });
-      });
-    }
-
     // TODO wrap with promises so that if a call is made before a prior call finishes,
     // it's just one call
     LdsIoApi = {
       init: function () {
       }
-    , profile: mergeProfile
-    , raw: function (account, rawUrl, params, opts) {
-        params = params || {};
-
-        if (!rawUrl) {
-          throw new Error("no rawUrl provided");
-        }
-
-        Object.keys(params).forEach(function (key) {
-          var val = params[key];
-          rawUrl = rawUrl.replace(':' + key, encodeURIComponent(val));
-        });
-
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + getId(account) + '/debug/raw?url=' + encodeURIComponent(rawUrl);
-        var id = url;
-
-        return promiseApiCall(
-          account
-        , id
-        , url
-        , opts
-        );
-      }
-    , me: function (account, opts) {
-        // NOTE: account may also be a session object with an accountId and token
-        var id = getId(account) + '.me';
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix + '/' + getId(account) + '/me';
-
-        return promiseApiCall(
-          account
-        , id
-        , url
-        , opts
-        );
-      }
-    , stake: function (session, stakeId, opts) {
-        if (!stakeId) {
-          throw new Error("no stake id provided");
-        }
-        var id = session.id + 'stake.' + stakeId;
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + session.id + '/stakes/' + stakeId;
-
-        return promiseApiCall(
-          session
-        , id
-        , url
-        , opts
-        );
-      }
-    , stakePhotos: function (session, stakeId, opts) {
-        if (!stakeId) {
-          throw new Error("no stake id provided");
-        }
-        var id = session.id + '.stake.' + stakeId;
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + session.id + '/stakes/' + stakeId + '/photos';
-
-        return promiseApiCall(
-          session
-        , id
-        , url
-        , opts
-        );
-      }
-    , ward: function (session, stakeId, wardId, opts) {
-        if (!stakeId) {
-          throw new Error("no stake id provided");
-        }
-        if (!wardId) {
-          throw new Error("no ward id provided");
-        }
-        var id = session.id + '.stake.' + stakeId + '.ward.' + wardId;
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId;
-
-        return promiseApiCall(
-          session
-        , id
-        , url
-        , opts
-        );
-      }
-    , wardPhotos: function (session, stakeId, wardId, opts) {
-        if (!stakeId) {
-          throw new Error("no stake id provided");
-        }
-        if (!wardId) {
-          throw new Error("no ward id provided");
-        }
-        var id = session.id + '.stake.' + stakeId + '.ward.' + wardId + '.photos';
-        var url = LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + session.id + '/stakes/' + stakeId + '/wards/' + wardId + '/photos';
-
-        return promiseApiCall(
-          session
-        , id
-        , url
-        , opts
-        );
-      }
-    , photoUrl: function (session, photo, size, type) {
-        if (!getId(photo)) {
-          console.warn(photo);
-          throw new Error("photo doesn't have an id");
-        }
-        // https://lds.io/api/ldsio/<accountId>/photos/individual/<appScopedId>/<date>/medium/<whatever>.jpg
-        return LdsApiConfig.providerUri + LdsApiConfig.apiPrefix
-          + '/' + getId(session)
-          + '/photos/' + (type || photo.type)
-          + '/' + getId(photo) + '/' + (photo.updated || photo.updated_at || photo.updatedAt || 'bad-updated-at')
-          + '/' + (size || 'medium') + '/' + getId(photo) + '.jpg'
-          + '?access_token=' + session.token
-          ;
-      }
-    , getAccountSummaries: function getAccountSummaries(session, accounts) {
+    , accountsWithProfiles: function accountsWithProfiles() {
+        var session = LdsApiSession.singletons.shared.session;
         var promises = [];
-        accounts = accounts || [];
+        var accounts = [];
 
         session.accounts.forEach(function (account) {
-          account = LdsApiSession.cloneAccount(session, account);
+          account = LdsApiSession.cloneAccount(account);
 
           promises.push(LdsIoApi.profile(account).then(function (profile) {
             // TODO get a slim profile?
@@ -339,6 +179,199 @@ angular
           return 'female';
         }
       }
+    };
+    LdsIoApi.api = {
+      profile: function mergeProfile(account/*, opts*/) {
+        return LdsIoApi.me(account).then(function (me) {
+          // TODO which ward has admin rights rather than home ward
+          // if (opts.home) // if (opts.called)
+          return LdsIoApi.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+            var membersMap = {};
+            var member;
+            var homesMap = {};
+            var home;
+            var leaders;
+
+            ward.members.forEach(function (m) {
+              membersMap[m.appScopedId] = m;
+            });
+
+            ward.homes.forEach(function (h) {
+              homesMap[h.appScopedId] = h;
+            });
+
+            member = membersMap[me.appScopedId];
+            home = homesMap[member.homeAppScopedId];
+
+            leaders = getLeadership(ward.members);
+
+            Object.keys(member).forEach(function (key) {
+              me[key] = member[key];
+            });
+
+            return {
+              me: me
+            , home: home
+            , leaders: leaders
+            , ward: ward
+              // TODO get stake for this ward
+            , stake: {
+                appScopedId: me.homeStakeAppScopedId
+              , name: me.homeStakeName
+              }
+            , membersMap: membersMap
+            , homesMap: homesMap
+            };
+          });
+        });
+      }
+    , raw: function (account, rawUrl, params, opts) {
+        params = params || {};
+
+        if (!rawUrl) {
+          throw new Error("no rawUrl provided");
+        }
+
+        Object.keys(params).forEach(function (key) {
+          var val = params[key];
+          rawUrl = rawUrl.replace(':' + key, encodeURIComponent(val));
+        });
+
+        var url = LdsApiConfig.apiBaseUri + LdsApiConfig.apiPrefix
+          + '/' + getId(account) + '/debug/raw?url=' + encodeURIComponent(rawUrl);
+        var id = url;
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
+    , me: function (account, opts) {
+        // NOTE: account may also be a session object with an accountId and token
+        var id = getId(account) + '.me';
+        var url = LdsApiConfig.apiBaseUri + LdsApiConfig.apiPrefix + '/' + getId(account) + '/me';
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
+    , stake: function (account, stakeId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
+        var id = account.appScopedId + 'stake.' + stakeId;
+        var url = LdsApiConfig.apiBaseUri + LdsApiConfig.apiPrefix
+          + '/' + account.appScopedId + '/stakes/' + stakeId;
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
+    , stakePhotos: function (account, stakeId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
+        var id = account.appScopedId + '.stake.' + stakeId;
+        var url = LdsApiConfig.apiBaseUri + LdsApiConfig.apiPrefix
+          + '/' + account.appScopedId + '/stakes/' + stakeId + '/photos';
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
+    , ward: function (account, stakeId, wardId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
+        if (!wardId) {
+          throw new Error("no ward id provided");
+        }
+        var id = account.appScopedId + '.stake.' + stakeId + '.ward.' + wardId;
+        var url = LdsApiConfig.apiBaseUri + LdsApiConfig.apiPrefix
+          + '/' + account.appScopedId + '/stakes/' + stakeId + '/wards/' + wardId;
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
+    , wardPhotos: function (account, stakeId, wardId, opts) {
+        if (!stakeId) {
+          throw new Error("no stake id provided");
+        }
+        if (!wardId) {
+          throw new Error("no ward id provided");
+        }
+        var id = account.appScopedId + '.stake.' + stakeId + '.ward.' + wardId + '.photos';
+        var url = LdsApiConfig.apiBaseUri + LdsApiConfig.apiPrefix
+          + '/' + account.appScopedId + '/stakes/' + stakeId + '/wards/' + wardId + '/photos';
+
+        return promiseApiCall(
+          account
+        , id
+        , url
+        , opts
+        );
+      }
+    , photoUrl: function (account, photo, size, type) {
+        if (!getId(photo)) {
+          console.warn(photo);
+          throw new Error("photo doesn't have an id");
+        }
+        // https://lds.io/api/ldsio/<accountId>/photos/individual/<appScopedId>/<date>/medium/<whatever>.jpg
+        return LdsApiConfig.apiBaseUri + LdsApiConfig.apiPrefix
+          + '/' + getId(account)
+          + '/photos/' + (type || photo.type)
+          + '/' + getId(photo) + '/' + (photo.updated || photo.updated_at || photo.updatedAt || 'bad-updated-at')
+          + '/' + (size || 'medium') + '/' + getId(photo) + '.jpg'
+          + '?access_token=' + account.token
+          ;
+      }
+    };
+
+    // Wrap API
+    //
+    // All of these functions take the account as the first param because
+    // that makes it easier to drop down and test from the commandline,
+    // however, it's a better user experience to treat them as singletons
+    Object.keys(LdsIoApi.api).forEach(function (key) {
+      LdsIoApi[key] = function () {
+        var args = Array.prototype.slice.call(arguments);
+        if (!LdsApiSession.singletons.shared.account) {
+          LdsApiSession.selectAccount();
+        }
+        args.unshift(LdsApiSession.singletons.shared.account);
+        return LdsIoApi.api[key].apply(null, args);
+      };
+    });
+
+    LdsIoApi.create = function (account) {
+      var api = {};
+
+      account = account || LdsApiSession.selectAccount();
+
+      Object.keys(LdsIoApi.api).forEach(function (key) {
+        api[key] = function () {
+          var args = Array.prototype.slice.call(arguments);
+          args.unshift(account);
+          return LdsIoApi.api[key].apply(null, args);
+        };
+      });
+
+      return api;
     };
 
     // for easier debugging :)
