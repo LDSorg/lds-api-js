@@ -482,21 +482,15 @@ angular
     }
 
     api.getToken = function (session, accountId) {
-      console.log('[getToken]');
-      console.log('session', session);
-      console.log('accountId', accountId);
       var logins = [];
       var login;
       accountId = LdsIoAccounts.getId(accountId) || accountId;
-
-      console.log('accountId', accountId);
 
       // search logins first because we know we're actually
       // logged in with said login, y'know?
       session.logins.forEach(function (login) {
         login.accounts.forEach(function (account) {
           if (LdsIoAccounts.getId(account) === accountId) {
-            console.log('YAY');
             logins.push(login);
           }
         });
@@ -507,11 +501,6 @@ angular
         return (new Date(b.expiresAt).value || 0) - (new Date(a.expiresAt).value || 0);
       })[0];
 
-      console.log('login', login);
-      console.log('login.token', login.token);
-
-      console.log('');
-      console.log('');
       return login && login.token;
     };
 
@@ -927,11 +916,6 @@ angular
       account.accountId = account.accountId || account.appScopedId || id;
       account.appScopedId = account.appScopedId || id;
 
-      console.log('[clone]');
-      console.log('token', token);
-      console.log('clone', account);
-      console.log('');
-      console.log('');
       return account;
     };
 
@@ -966,8 +950,6 @@ angular
       session.appScopedId = account.accountId;
       session.token = account.token;
 
-      console.log('session', session);
-      console.log('account', account);
       shared.account = account;
       return account;
     };
@@ -1186,7 +1168,7 @@ angular
         session.accounts.forEach(function (account) {
           account = LdsApiSession.cloneAccount(account);
 
-          promises.push(LdsIoApi.profile(account).then(function (profile) {
+          promises.push(LdsIoApi.api.profile(account).then(function (profile) {
             // TODO get a slim profile?
             account.profile = profile; 
             accounts.push(account);
@@ -1222,10 +1204,10 @@ angular
     };
     LdsIoApi.api = {
       profile: function mergeProfile(account/*, opts*/) {
-        return LdsIoApi.me(account).then(function (me) {
+        return LdsIoApi.api.me(account).then(function (me) {
           // TODO which ward has admin rights rather than home ward
           // if (opts.home) // if (opts.called)
-          return LdsIoApi.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+          return LdsIoApi.api.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
             var membersMap = {};
             var member;
             var homesMap = {};
