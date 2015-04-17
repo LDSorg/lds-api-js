@@ -342,22 +342,15 @@ angular
       }
     };
 
+    Object.keys(LdsIoApi.api).forEach(function (key) {
+      LdsIoApi[key] = LdsIoApi.api[key];
+    });
+
     // Wrap API
     //
     // All of these functions take the account as the first param because
     // that makes it easier to drop down and test from the commandline,
-    // however, it's a better user experience to treat them as singletons
-    Object.keys(LdsIoApi.api).forEach(function (key) {
-      LdsIoApi[key] = function () {
-        var args = Array.prototype.slice.call(arguments);
-        if (!LdsApiSession.singletons.shared.account) {
-          LdsApiSession.selectAccount();
-        }
-        args.unshift(LdsApiSession.singletons.shared.account);
-        return LdsIoApi.api[key].apply(null, args);
-      };
-    });
-
+    // however, for some it's a better user experience to treat them as instances
     LdsIoApi.create = function (account) {
       var api = {};
 
