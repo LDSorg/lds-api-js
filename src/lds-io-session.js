@@ -202,21 +202,15 @@ angular
     }
 
     api.getToken = function (session, accountId) {
-      console.log('[getToken]');
-      console.log('session', session);
-      console.log('accountId', accountId);
       var logins = [];
       var login;
       accountId = LdsIoAccounts.getId(accountId) || accountId;
-
-      console.log('accountId', accountId);
 
       // search logins first because we know we're actually
       // logged in with said login, y'know?
       session.logins.forEach(function (login) {
         login.accounts.forEach(function (account) {
           if (LdsIoAccounts.getId(account) === accountId) {
-            console.log('YAY');
             logins.push(login);
           }
         });
@@ -227,11 +221,6 @@ angular
         return (new Date(b.expiresAt).value || 0) - (new Date(a.expiresAt).value || 0);
       })[0];
 
-      console.log('login', login);
-      console.log('login.token', login.token);
-
-      console.log('');
-      console.log('');
       return login && login.token;
     };
 
@@ -647,11 +636,6 @@ angular
       account.accountId = account.accountId || account.appScopedId || id;
       account.appScopedId = account.appScopedId || id;
 
-      console.log('[clone]');
-      console.log('token', token);
-      console.log('clone', account);
-      console.log('');
-      console.log('');
       return account;
     };
 
@@ -686,8 +670,6 @@ angular
       session.appScopedId = account.accountId;
       session.token = account.token;
 
-      console.log('session', session);
-      console.log('account', account);
       shared.account = account;
       return account;
     };

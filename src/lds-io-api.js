@@ -146,7 +146,7 @@ angular
         session.accounts.forEach(function (account) {
           account = LdsApiSession.cloneAccount(account);
 
-          promises.push(LdsIoApi.profile(account).then(function (profile) {
+          promises.push(LdsIoApi.api.profile(account).then(function (profile) {
             // TODO get a slim profile?
             account.profile = profile; 
             accounts.push(account);
@@ -182,10 +182,10 @@ angular
     };
     LdsIoApi.api = {
       profile: function mergeProfile(account/*, opts*/) {
-        return LdsIoApi.me(account).then(function (me) {
+        return LdsIoApi.api.me(account).then(function (me) {
           // TODO which ward has admin rights rather than home ward
           // if (opts.home) // if (opts.called)
-          return LdsIoApi.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+          return LdsIoApi.api.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
             var membersMap = {};
             var member;
             var homesMap = {};
