@@ -29,7 +29,6 @@
   , get: function (conf, key) {
       var val;
 
-      console.log(conf.prefix + key);
       try {
         val = JSON.parse(localStorage.getItem(conf.prefix + key) || null);
       } catch(e) {

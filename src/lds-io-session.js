@@ -34,11 +34,6 @@
     , secretMinLength: opts.secretMinLength
     };
 
-    myInstance.openAuthorizationDialog = opts.invokeLogin || opts.config.invokeLogin;
-    myInstance.usernameMinLength = opts.usernameMinLength;
-    myInstance.secretMinLength = opts.secretMinLength;
-    myInstance.api = api;
-
     Object.keys(TherapySession.api).forEach(function (key) {
       myInstance[key] = function () {
         var args = Array.prototype.slice.call(arguments);
@@ -46,6 +41,12 @@
         return TherapySession.api[key].apply(null, args);
       };
     });
+
+    myInstance.getId = TherapySession.getId;
+    myInstance.openAuthorizationDialog = opts.invokeLogin || opts.config.invokeLogin;
+    myInstance.usernameMinLength = opts.usernameMinLength;
+    myInstance.secretMinLength = opts.secretMinLength;
+    myInstance.api = api;
 
     myInstance._conf = conf;
 
@@ -710,7 +711,7 @@
   , account: TAccounts.selectAccount 
   , testLoginAccounts: testLoginAccounts
   , cloneAccount: TAccounts.cloneAccount
-  , getId: TAccounts.getId
+  //, getId: TAccounts.getId
   };
 
   TherapySession = {

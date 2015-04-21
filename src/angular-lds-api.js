@@ -6,26 +6,6 @@
 
 
 //
-// Oauth3
-//
-angular
-  .module('fake.oauth3.config', ['oauth3'])
-  .service('fake.oauth3.request', ['$http', 'Oauth3', function LdsApiStorage($http, oauth3) {
-
-    oauth3.provideRequest = function (request) {
-      oauth3.request = request;
-      /*
-      return oauth3._testRequest(request).then(function () {
-        oauth3.request = request;
-      });
-      */
-    };
-
-    oauth3.provideRequest($http);
-  }]);
-
-
-//
 // LdsApiStorage / CannedStorage
 //
 angular
@@ -154,7 +134,14 @@ angular
     ngLdsIo.session = LdsApiSession;
     ngLdsIo.request = LdsApiRequest;
     ngLdsIo.config = LdsApiConfig;
-    ngLdsIo.init = ngLdsIo.config.init;
+    //ngLdsIo.init = ngLdsIo.config.init;
+    ngLdsIo.init = function (opts) {
+      return ngLdsIo.config.init(opts).then(function (config) {
+        return ngLdsIo.cache.init().then(function () {
+          return config;
+        });
+      });
+    };
 
     return ngLdsIo;
   }]);

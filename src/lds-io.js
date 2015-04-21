@@ -9,25 +9,27 @@
                         LdsIo.session = exports.TherapySession  || require('./therapy-session');
                         LdsIo.api     = exports.LdsApiRequests  || require('./lds-io-api');
 
-  LdsIo.init = function (opts) {
+  var LdsIo = {};
+
+  LdsIo.init = function (conf, opts) {
     if ('object' !== typeof opts) {
       window.alert("[ERROR] you did not supply an options object to LdsApiConfig.init()");
     }
 
     // TODO delete stale sessions (i.e. on public computers)
-    return LdsApiConfig.init(opts).then(function (LdsApiConfig) {
-      return LdsApiStorage.get('appVersion').then(function (version) {
-        if (version !== LdsApiConfig.appVersion) {
-          return LdsApiCache.destroy();
+    return conf.config.init(opts).then(function (config) {
+      return conf.storage.get('appVersion').then(function (version) {
+        if (version !== config.appVersion) {
+          return conf.cache.destroy();
         }
       }, function () {
-        if (!LdsApiConfig.developerMode) {
-          return LdsApiCache.destroy();
+        if (!config.developerMode) {
+          return conf.cache.destroy();
         }
       }).then(function () {
-        return LdsApiStorage.set('appVersion', opts.appVersion).then(function () {
-          return LdsApiCache.init().then(function () {
-            return LdsApiConfig;
+        return conf.storage.set('appVersion', opts.appVersion).then(function () {
+          return conf.cache.init().then(function () {
+            return config;
           });
         });
       });

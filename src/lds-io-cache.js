@@ -19,6 +19,7 @@
       var conf = {
         config: opts.config
       , storage: opts.storage
+      //, caches: {}
       };
 
       Object.keys(JohnnyCache.api).forEach(function (key) {

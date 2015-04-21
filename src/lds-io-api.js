@@ -43,6 +43,9 @@
 
   function promiseApiCall(conf, account, id, url, opts) {
     opts = opts || {};
+    var err = new Error("getting stack trace");
+    console.warn(err.message);
+    console.warn(err.stack);
     return conf.cache.read(id, function () {
       return new Oauth3.PromiseA(function (resolve, reject) {
         var kotoken = setTimeout(function () {
@@ -53,7 +56,7 @@
 
           opts.tried = true;
           return promiseApiCall(account, id, url, opts).then(resolve, reject);
-        }, opts.timeout && 16000 || 8000); 
+        }, opts.tried && 16000 || 8000); 
         //opts.tried && 16000 || 8000 
 
         realGet(conf, account, id, url).then(function (data) {
@@ -139,11 +142,11 @@
 
       return myInstance;
     }
-  , accountsWithProfiles: function accountsWithProfiles(conf) {
+  , accountsWithProfiles: function accountsWithProfiles(conf, accounts) {
       // TODO conf.session.get()
       var session = conf.session._conf.session;
       var promises = [];
-      var accounts = [];
+      accounts = accounts || [];
 
       session.accounts.forEach(function (account) {
         account = conf.session.cloneAccount(account);
@@ -211,7 +214,7 @@
       return LdsIoApi.api.me(conf, account).then(function (me) {
         // TODO which ward has admin rights rather than home ward
         // if (opts.home) // if (opts.called)
-        return LdsIoApi.api.ward(account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
+        return LdsIoApi.api.ward(conf, account, me.homeStakeAppScopedId, me.homeWardAppScopedId).then(function (ward) {
           var membersMap = {};
           var member;
           var homesMap = {};
