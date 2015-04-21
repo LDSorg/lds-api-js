@@ -1,81 +1,95 @@
-'use strict';
+(function (exports) {
+  'use strict';
 
-angular
-  .module('lds.io.storage', [])
-  .service('LdsApiStorage', [
-    '$window'
-  , '$q'
-  , function LdsApiStorage($window, $q) {
-    var prefix = 'io.lds.';
-    var LdsIoStorage = {
-      init: function (pre) {
-        if (pre) {
-          prefix = pre;
-        }
-      }
-    , get: function (key) {
-        var val;
+  var CannedStorage;
+  var Oauth3 = (exports.OAUTH3 || require('./oauth3'));
 
-        try {
-          val = JSON.parse(localStorage.getItem(prefix + key) || null);
-        } catch(e) {
-          console.error("couldn't parse " + prefix + key, localStorage.getItem(prefix + key));
-          localStorage.removeItem(prefix + key);
-          val = null;
-        }
-
-        // just because sometimes it happens...
-        if ('undefined' === val || 'null' === val) {
-          console.warn("got undefined for " + prefix + key);
-          val = null;
-        }
-
-        return val && $q.when(val) || $q.reject();
-      }
-    , set: function (key, val) {
-        try {
-          localStorage.setItem(prefix + key, JSON.stringify(val));
-          return $q.when();
-        } catch(e) {
-          console.error("couldn't stringify " + prefix + key, val);
-          return $q.reject(e);
-        }
-      }
-    , remove: function (key) {
-        localStorage.removeItem(prefix + key);
-        return $q.when();
-      }
-    , clear: function (account) {
-        var re;
-        var keys = [];
-        var i;
-        var key;
-
-        re = new RegExp('^'
-          // See http://stackoverflow.com/a/6969486/151312 for regexp escape explanation
-          + prefix.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&")
-          + (account || '')
-        );
-
-        for (i = 0; i < localStorage.length; i += 1) {
-          key = localStorage.key(i);
-          if (re.test(key) && !/\.(dev|developer)\./.test(key)) {
-            keys.push(key);
-          }
-        }
-
-        keys.forEach(function (key) {
-          localStorage.removeItem(key);
-        });
-
-        return $q.when();
-      }
+  function create(opts) {
+    var myInstance = {};
+    var conf = {
+      namespace: opts.namespace
     };
 
-    // for easier debugging :)
-    $window.LdsIo = $window.LdsIo || {};
-    $window.LdsIo.storage = LdsIoStorage;
+    Object.keys(CannedStorage.api).forEach(function (key) {
+      myInstance[key] = function () {
+        var args = Array.prototype.slice.call(null, arguments);
+        args.unshift(conf);
+        CannedStorage.api[key].apply(null, conf);
+      };
+    });
 
-    return LdsIoStorage;
-  }])
-  ;
+    return myInstance;
+  }
+
+  var api = {
+    init: function (/*conf*/) {
+      // noop, reserved for future use
+      return Oauth3.PromiseA.resolve();
+    }
+  , get: function (conf, key) {
+      var val;
+
+      try {
+        val = JSON.parse(localStorage.getItem(conf.prefix + key) || null);
+      } catch(e) {
+        console.error("couldn't parse " + conf.prefix + key, localStorage.getItem(conf.prefix + key));
+        localStorage.removeItem(conf.prefix + key);
+        val = null;
+      }
+
+      // just because sometimes it happens...
+      if ('undefined' === val || 'null' === val) {
+        console.warn("got undefined for " + conf.prefix + key);
+        val = null;
+      }
+
+      return val && Oauth3.PromiseA.resolve(val) || Oauth3.PromiseA.reject();
+    }
+  , set: function (conf, key, val) {
+      try {
+        localStorage.setItem(conf.prefix + key, JSON.stringify(val));
+        return Oauth3.PromiseA.resolve();
+      } catch(e) {
+        console.error("couldn't stringify " + conf.prefix + key, val);
+        return Oauth3.PromiseA.reject(e);
+      }
+    }
+  , remove: function (conf, key) {
+      localStorage.removeItem(conf.prefix + key);
+      return Oauth3.PromiseA.resolve();
+    }
+  , clear: function (conf, account) {
+      var re;
+      var keys = [];
+      var i;
+      var key;
+
+      re = new RegExp('^'
+        // See http://stackoverflow.com/a/6969486/151312 for regexp escape explanation
+        + conf.prefix.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&")
+        + (account || '')
+      );
+
+      for (i = 0; i < localStorage.length; i += 1) {
+        key = localStorage.key(i);
+        if (re.test(key) && !/\.(dev|developer)\./.test(key)) {
+          keys.push(key);
+        }
+      }
+
+      keys.forEach(function (key) {
+        localStorage.removeItem(key);
+      });
+
+      return Oauth3.PromiseA.resolve();
+    }
+  };
+
+  exports.CannedStorage = CannedStorage.CannedStorage = CannedStorage = {
+    create: create
+  , api: api
+  };
+  if ('undefined' !== module) {
+    module.exports = CannedStorage;
+  }
+}('undefined' !== exports ? exports : window));

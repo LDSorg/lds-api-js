@@ -1,16 +1,8 @@
-'use strict';
+(function (exports) {
+  'use strict';
 
-angular
-  .module('lds.io.cache', ['lds.io.storage'])
-  .service('LdsApiCache', [
-    '$window'
-  , '$q'
-  , 'LdsApiStorage'
-  , function LdsApiCache($window, $q, LdsApiStorage) {
-    var LdsIoCache;
-    var caches;
-    var refreshIn = (15 * 60 * 1000);
-    var uselessIn = Infinity; // (30 * 24 * 60 * 60 * 1000);
+    var JohnnyCache;
+    var Oauth3 = (exports.OAUTH3 || require('./oauth3'));
 
     /*
     function batchApiCall(ids, url, handler) {
@@ -22,17 +14,35 @@ angular
     }
     */
 
-    function init() {
-      return LdsApiStorage.get('caches').then(function (result) {
-        caches = result;
+    function create(opts) {
+      var myInstance = {};
+      var conf = {
+        config: opts.config
+      , storage: opts.storage
+      };
+
+      Object.keys(JohnnyCache.api).forEach(function (key) {
+        myInstance[key] = function () {
+          var args = Array.prototype.slice.call(null, arguments);
+          args.unshift(conf);
+          JohnnyCache.api[key].apply(null, conf);
+        };
+      });
+
+      return myInstance;
+    }
+
+    function init(conf) {
+      return conf.storage.get('caches').then(function (result) {
+        conf.caches = result;
       }, function () {
-        caches = {};
+        conf.caches = {};
       });
     }
 
-    function read(id, realFetch, opts) {
-      var refreshWait = refreshIn;
-      var uselessWait = uselessIn;
+    function read(conf, id, realFetch, opts) {
+      var refreshWait = conf.config.refreshWait;
+      var uselessWait = conf.config.uselessWait;
       var fresh;
       var usable;
       var now;
@@ -42,7 +52,7 @@ angular
         return realFetch().then(function (result) {
           if ('string' === typeof result) {
             // TODO explicit option for strings
-            return $q.reject("expected json, but got a string, which is probably an error");
+            return Oauth3.PromiseA.reject("expected json, but got a string, which is probably an error");
           }
           return fin(result);
         });
@@ -50,30 +60,30 @@ angular
 
       function fin(value) {
         promise = null;
-        caches[id] = Date.now();
-        return LdsApiStorage.set(id, value).then(function () {
-          return LdsApiStorage.set('caches', caches).then(function () {
-            return { updated: caches[id], value: value, stale: false };
+        conf.caches[id] = Date.now();
+        return conf.storage.set(id, value).then(function () {
+          return conf.storage.set('caches', conf.caches).then(function () {
+            return { updated: conf.caches[id], value: value, stale: false };
           });
         });
       }
 
-      if (caches[id] && !(opts && opts.expire)) {
+      if (conf.caches[id] && !(opts && opts.expire)) {
         now = Date.now();
-        usable = now - caches[id] < uselessWait;
-        fresh = now - caches[id] < refreshWait;
+        usable = now - conf.caches[id] < uselessWait;
+        fresh = now - conf.caches[id] < refreshWait;
         if (!fresh) {
           promise = fetch();
         }
       }
 
-      return LdsApiStorage.get(id).then(function (result) {
+      return conf.storage.get(id).then(function (result) {
         if ('string' === typeof result) {
           // TODO explicit option
           return (promise || fetch());
         }
         if (usable) {
-          return $q.when({ updated: caches[id], value: result, stale: !fresh });
+          return Oauth3.PromiseA.resolve({ updated: conf.caches[id], value: result, stale: !fresh });
         } else {
           return (promise || fetch());
         }
@@ -82,22 +92,21 @@ angular
       });
     }
 
-    function destroy() {
-      caches = {};
-      return LdsApiStorage.clear();
+    function destroy(conf) {
+      conf.caches = {};
+      return conf.storage.clear();
     }
 
-    LdsIoCache = {
-      init: init
-    , read: read
-    , destroy: destroy
-    , clear: destroy
+    exports.JohnnyCache = JohnnyCache.JohnnyCache = JohnnyCache = {
+      create: create
+    , api: {
+        init: init
+      , read: read
+      , destroy: destroy
+      , clear: destroy
+      }
     };
-
-    // for easier debugging :)
-    $window.LdsIo = $window.LdsIo || {};
-    $window.LdsIo.cache = LdsIoCache;
-
-    return LdsIoCache;
-  }])
-  ;
+    if ('undefined' !== module) {
+      module.exports = JohnnyCache;
+    }
+}('undefined' !== exports ? exports : window));
