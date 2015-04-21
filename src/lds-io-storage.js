@@ -7,14 +7,14 @@
   function create(opts) {
     var myInstance = {};
     var conf = {
-      namespace: opts.namespace
+      prefix: opts.namespace + '.'
     };
 
     Object.keys(CannedStorage.api).forEach(function (key) {
       myInstance[key] = function () {
-        var args = Array.prototype.slice.call(null, arguments);
+        var args = Array.prototype.slice.call(arguments);
         args.unshift(conf);
-        CannedStorage.api[key].apply(null, conf);
+        return CannedStorage.api[key].apply(null, args);
       };
     });
 
@@ -29,6 +29,7 @@
   , get: function (conf, key) {
       var val;
 
+      console.log(conf.prefix + key);
       try {
         val = JSON.parse(localStorage.getItem(conf.prefix + key) || null);
       } catch(e) {
@@ -85,11 +86,13 @@
     }
   };
 
-  exports.CannedStorage = CannedStorage.CannedStorage = CannedStorage = {
+  CannedStorage = {
     create: create
   , api: api
   };
-  if ('undefined' !== module) {
+  exports.CannedStorage = CannedStorage.CannedStorage = CannedStorage;
+
+  if ('undefined' !== typeof module) {
     module.exports = CannedStorage;
   }
-}('undefined' !== exports ? exports : window));
+}('undefined' !== typeof exports ? exports : window));

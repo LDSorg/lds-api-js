@@ -23,9 +23,9 @@
 
       Object.keys(JohnnyCache.api).forEach(function (key) {
         myInstance[key] = function () {
-          var args = Array.prototype.slice.call(null, arguments);
+          var args = Array.prototype.slice.call(arguments);
           args.unshift(conf);
-          JohnnyCache.api[key].apply(null, conf);
+          return JohnnyCache.api[key].apply(null, args);
         };
       });
 
@@ -97,7 +97,7 @@
       return conf.storage.clear();
     }
 
-    exports.JohnnyCache = JohnnyCache.JohnnyCache = JohnnyCache = {
+    JohnnyCache = {
       create: create
     , api: {
         init: init
@@ -106,7 +106,9 @@
       , clear: destroy
       }
     };
-    if ('undefined' !== module) {
+    exports.JohnnyCache = JohnnyCache.JohnnyCache = JohnnyCache;
+
+    if ('undefined' !== typeof module) {
       module.exports = JohnnyCache;
     }
-}('undefined' !== exports ? exports : window));
+}('undefined' !== typeof exports ? exports : window));

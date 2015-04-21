@@ -41,9 +41,9 @@
 
     Object.keys(TherapySession.api).forEach(function (key) {
       myInstance[key] = function () {
-        var args = Array.prototype.slice.call(null, arguments);
+        var args = Array.prototype.slice.call(arguments);
         args.unshift(conf);
-        TherapySession.api[key].apply(null, args);
+        return TherapySession.api[key].apply(null, args);
       };
     });
 
@@ -86,7 +86,7 @@
   function destroy(conf) {
     conf.session = createSession();
     localStorage.removeItem(conf.sessionKey);
-    return conf.cache.destroy().then(function (session) {
+    return conf.cache.destroy(conf).then(function (session) {
       return session;
     });
   }
@@ -108,8 +108,8 @@
 
       if (!Array.isArray(accounts)) {
         console.error("[Uknown ERROR] couldn't fetch accounts, no proper error", accounts);
-        // TODO destroy();
-        return Oauth3.PromiseA.reject(new Error("could not verify login")); // destroy();
+        // TODO destroy(conf);
+        return Oauth3.PromiseA.reject(new Error("could not verify login")); // destroy(conf);
       }
 
       return accounts;
@@ -130,9 +130,9 @@
 
   function logout(conf) {
     return Oauth3.logout(conf.config.providerUri, {}).then(function () {
-      return destroy();
+      return destroy(conf);
     }, function () {
-      return destroy();
+      return destroy(conf);
     });
   }
 
@@ -164,7 +164,7 @@
     }
 
     if (!opts.force) {
-      promise = restore(opts.scope);
+      promise = restore(conf, opts.scope);
     } else {
       promise = Oauth3.PromiseA.reject();
     }
@@ -398,7 +398,7 @@
       return session;
     }, function () {
       // this is just bad news...
-      return conf.cache.destroy().then(function () {
+      return conf.cache.destroy(conf).then(function () {
         window.alert("Sorry, but an error occurred which can only be fixed by logging you out"
           + " and refreshing the page.\n\nThis will happen automatically.\n\nIf you get this"
           + " message even after the page refreshes, please contact support@ldsconnectorg."
@@ -713,19 +713,21 @@
   , getId: TAccounts.getId
   };
 
+  TherapySession = {
+    create: create
+  , api: api
+  , getId: TAccounts.getId
+  };
+
   // XXX
   // These are underscore prefixed because they aren't official API yet
   // I need more time to figure out the proper separation
   TherapySession._logins = TLogins;
   TherapySession._accounts = TAccounts;
 
-  exports.TherapySession = TherapySession.TherapySession = TherapySession = {
-    create: create
-  , api: api
-  , getId: TAccounts.getId
-  };
+  exports.TherapySession = TherapySession.TherapySession = TherapySession;
 
-  if ('undefined' !== module) {
+  if ('undefined' !== typeof module) {
     module.exports = TherapySession;
   }
-}('undefined' !== exports ? exports : window));
+}('undefined' !== typeof exports ? exports : window));

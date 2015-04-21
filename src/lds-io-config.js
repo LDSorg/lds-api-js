@@ -72,11 +72,12 @@
     return me;
   }
 
-  exports.Oauth3Config = Oauth3Config.Oauth3Config = Oauth3Config = {
+  Oauth3Config = {
     create: create
   };
+  exports.Oauth3Config = Oauth3Config.Oauth3Config = Oauth3Config;
 
-  if ('undefined' !== module) {
+  if ('undefined' !== typeof module) {
     module.exports = Oauth3Config;
   }
-}('undefined' !== exports ? exports : window));
+}('undefined' !== typeof exports ? exports : window));

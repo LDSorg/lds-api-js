@@ -375,8 +375,7 @@
   };
 
   exports.LdsIoApi = LdsIoApi.LdsIoApi = LdsIoApi;
-  if ('undefined' !== module) {
+  if ('undefined' !== typeof module) {
     module.exports = LdsIoApi;
   }
-}('undefined' !== exports ? exports : window));
-
+}('undefined' !== typeof exports ? exports : window));
