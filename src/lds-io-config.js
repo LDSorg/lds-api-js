@@ -2,7 +2,7 @@
   'use strict';
 
   var Oauth3Config;
-  //var Oauth3 = (exports.OAUTH3 || require('./oauth3'));
+  var Oauth3 = (exports.OAUTH3 || require('./oauth3'));
 
   function create(instanceOpts) {
     var me = {};
@@ -12,20 +12,23 @@
 
     me.init = function (opts) {
       // TODO get multiple keys at once
-      return storage.get('dev.providerUri').then(function (val) {
-        me.developerMode = true;
-        me.providerUri = val;
-        me.providerUriSet = true;
+      return Oauth3.PromiseA.all(
+        storage.get('dev.providerUri').then(function (val) {
+          me.developerMode = true;
+          me.providerUri = val;
+          me.providerUriSet = true;
 
-        return storage.get('dev.apiBaseUri').then(function (val2) {
-          me.apiBaseUri = val2;
-          me.apiBaseUriSet = true;
         }, function () {
           // ignore
-        });
-      }, function () {
-        // ignore
-      }).then(function () {
+        })
+      , storage.get('dev.apiBaseUri').then(function (val2) {
+          me.apiBaseUri = val2;
+          me.apiBaseUriSet = true;
+
+        }, function () {
+          // ignore
+        })
+      ).then(function () {
         Object.keys(opts).forEach(function (key) {
           if ('appSecret' === key) {
             window.alert("[ERROR] appSecret must never be used in a client (browser, mobile, or desktop)");
