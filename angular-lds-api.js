@@ -110,7 +110,7 @@
 
     me.init = function (opts) {
       // TODO get multiple keys at once
-      return Oauth3.PromiseA.all(
+      return Oauth3.PromiseA.all([
         storage.get('dev.providerUri').then(function (val) {
           me.developerMode = true;
           me.providerUri = val;
@@ -126,7 +126,7 @@
         }, function () {
           // ignore
         })
-      ).then(function () {
+      ]).then(function () {
         Object.keys(opts).forEach(function (key) {
           if ('appSecret' === key) {
             window.alert("[ERROR] appSecret must never be used in a client (browser, mobile, or desktop)");
@@ -398,7 +398,7 @@
 
   function accounts(conf, login) {
     return Oauth3.request({
-      url: conf.config.apiBaseUri + conf.config.apiPrefix + '/accounts' + '?camel=true'
+      url: conf.config.apiBaseUri + conf.config.apiPrefix + '/accounts'
     , method: 'GET'
     , headers: { 'Authorization': 'Bearer ' + login.token }
     }).then(function (resp) {
@@ -1048,7 +1048,7 @@
     }
 
     conf.promisesMap[id] = Oauth3.request({
-      url: url + '?camel=true'
+      url: url
     , method: 'GET'
     , headers: { 'Authorization': 'Bearer ' + account.token }
     }).then(function (resp) {
@@ -1081,9 +1081,6 @@
 
   function promiseApiCall(conf, account, id, url, opts) {
     opts = opts || {};
-    var err = new Error("getting stack trace");
-    console.warn(err.message);
-    console.warn(err.stack);
     return conf.cache.read(id, function () {
       return new Oauth3.PromiseA(function (resolve, reject) {
         var kotoken = setTimeout(function () {
