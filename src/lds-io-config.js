@@ -13,7 +13,7 @@
 
     me.init = function (opts) {
       // TODO get multiple keys at once
-      return Oauth3.PromiseA.all(
+      return Oauth3.PromiseA.all([
         storage.get('dev.providerUri').then(function (val) {
           me.developerMode = true;
           me.providerUri = val;
@@ -29,7 +29,7 @@
         }, function () {
           // ignore
         })
-      ).then(function () {
+      ]).then(function () {
         Object.keys(opts).forEach(function (key) {
           if ('appSecret' === key) {
             window.alert("[ERROR] appSecret must never be used in a client (browser, mobile, or desktop)");

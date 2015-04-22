@@ -10,7 +10,7 @@
     }
 
     conf.promisesMap[id] = Oauth3.request({
-      url: url + '?camel=true'
+      url: url
     , method: 'GET'
     , headers: { 'Authorization': 'Bearer ' + account.token }
     }).then(function (resp) {
@@ -43,9 +43,6 @@
 
   function promiseApiCall(conf, account, id, url, opts) {
     opts = opts || {};
-    var err = new Error("getting stack trace");
-    console.warn(err.message);
-    console.warn(err.stack);
     return conf.cache.read(id, function () {
       return new Oauth3.PromiseA(function (resolve, reject) {
         var kotoken = setTimeout(function () {

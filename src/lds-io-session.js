@@ -94,7 +94,7 @@
 
   function accounts(conf, login) {
     return Oauth3.request({
-      url: conf.config.apiBaseUri + conf.config.apiPrefix + '/accounts' + '?camel=true'
+      url: conf.config.apiBaseUri + conf.config.apiPrefix + '/accounts'
     , method: 'GET'
     , headers: { 'Authorization': 'Bearer ' + login.token }
     }).then(function (resp) {
