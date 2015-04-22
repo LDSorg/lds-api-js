@@ -69,8 +69,12 @@
             + me.libPrefix + "LdsIo.storage.remove('dev.apiBaseUri');");
           console.log('');
         }
-
-        return me;
+      }).then(function () {
+        // Note: it is possible for this to fail (i.e. when offline or providerUri is bad).
+        // Note: for development you can pass in opts.directives (in the format of oauth3.json)
+        return Oauth3.discover(me.providerUri, opts).then(function () {
+          return me;
+        });
       });
     };
 
