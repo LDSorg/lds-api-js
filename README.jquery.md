@@ -1,3 +1,10 @@
+jQuery Library for lds-api-js
+==============
+
+This repo is primarily for bower and documentation.
+
+See <https://github.com/LDSorg/lds-api-js> for issues and pull requests.
+
 jquery-lds-io
 ==============
 
@@ -18,6 +25,7 @@ bower install --save lds-api
 **Development**:
 
 ```html
+<script src="bower_components/recase/recase.js"></script>
 <script src="bower_components/oauth3/oauth3.js"></script>
 <script src="bower_components/oauth3/oauth3.jquery.js"></script>
 
@@ -33,6 +41,7 @@ bower install --save lds-api
 **Production**:
 
 ```html
+<script src="bower_components/recase/recase.min.js"></script>
 <script src="bower_components/oauth3/oauth3.jquery.min.js"></script>
 <script src="bower_components/lds-api/lds-api.jquery.min.js"></script>
 ```
