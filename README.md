@@ -5,6 +5,17 @@ JavaScript libraries and wrappers for utilizing the LDS.org APIs through LDS I/O
 which is wrapped to provide proper encryption and security suitable for 3rd-party
 libraries.
 
+Install
+=======
+
+All browser modules are available as `lds-api`.
+
+```bash
+bower install --save lds-api
+```
+
+The modules `lds`, `angular-lds-io`, and `jquery-lds-io` are all aliases of `lds-api`.
+
 Angular
 =======
 
