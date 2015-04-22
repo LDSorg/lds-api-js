@@ -15,8 +15,9 @@
 
   jqLdsIo.config = window.Oauth3Config.create({
     defaults: {
-      // TODO this should be grabbed from oauth3.html?directives=true&callback=directives
-      providerUri: 'https://ldsconnect.org'
+      libPrefix: 'jq'
+      // TODO this should be grabbed from oauth3.html?action=directives
+    , providerUri: 'https://ldsconnect.org'
     , apiBaseUri: 'https://lds.io'
     , appId: null
     , appUri: window.location.protocol + '//' + window.location.host + window.location.pathname
@@ -63,6 +64,7 @@
   };
 
   exports.jqLdsIo = jqLdsIo.jqLdsIo = jqLdsIo;
+  window.LdsIo = jqLdsIo;
 
   if ('undefined' !== typeof module) {
     module.exports = jqLdsIo;

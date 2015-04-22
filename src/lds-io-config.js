@@ -9,6 +9,7 @@
     var storage = instanceOpts.storage;
 
     me.defaults = instanceOpts.defaults;
+    me.libPrefix = instanceOpts.libPrefix;
 
     me.init = function (opts) {
       // TODO get multiple keys at once
@@ -53,8 +54,8 @@
         console.log('');
         if (!me.providerUriSet) {
           console.info("Why, hello there Latter-Day Developer! Would you like to test against the beta server?");
-          console.log("    LdsIo.storage.set('dev.providerUri', 'https://beta.ldsconnect.org')");
-          console.log("    LdsIo.storage.set('dev.apiBaseUri', 'https://beta.lds.io')");
+          console.log("    " + me.libPrefix + "LdsIo.storage.set('dev.providerUri', 'https://beta.ldsconnect.org')");
+          console.log("    " + me.libPrefix + "LdsIo.storage.set('dev.apiBaseUri', 'https://beta.lds.io')");
           console.log('');
         }
         if (me.providerUriSet || me.apiBaseUriSet) {
@@ -64,7 +65,8 @@
           console.log('');
 
           console.log("Want to switch back to production mode?");
-          console.log("    LdsIo.storage.remove('dev.providerUri'); LdsIo.storage.remove('dev.apiBaseUri');");
+          console.log("    " + me.libPrefix + "LdsIo.storage.remove('dev.providerUri'); "
+            + me.libPrefix + "LdsIo.storage.remove('dev.apiBaseUri');");
           console.log('');
         }
 

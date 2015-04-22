@@ -30,8 +30,9 @@ angular
 
     return window.Oauth3Config.create({
       defaults: {
-        // TODO this should be grabbed from oauth3.html?directives=true&callback=directives
-        providerUri: 'https://ldsconnect.org'
+        libPrefix: 'ng'
+        // TODO this should be grabbed from oauth3.html?action=directives
+      , providerUri: 'https://ldsconnect.org'
       , apiBaseUri: 'https://lds.io'
       , appId: null
       , appUri: window.location.protocol + '//' + window.location.host + window.location.pathname
@@ -143,5 +144,6 @@ angular
       });
     };
 
+    window.LdsIo = ngLdsIo;
     return ngLdsIo;
   }]);
