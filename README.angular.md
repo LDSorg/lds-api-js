@@ -126,11 +126,12 @@ However, if it is older than `LdsApiConfig.refreshWait` it will refresh in the b
 Account Specific
 
 * `LdsApiRequest.create(account)`             // creates wrapper that uses this account
-  * `ldsApiRequest.profile()`                                 // logged-in user's info
-  * `ldsApiRequest.stake(p.homeStakeId)`                      // returns ward member data
-  * `ldsApiRequest.stakePhotos(p.homeStakeId)`                // returns photo metadata
-  * `ldsApiRequest.ward(p.homeStakeId, p.homeWardId)`         // returns ward member data
-  * `ldsApiRequest.wardPhotos(p.homeStakeId, p.homeWardId)`   // returns photo metadata
+  * `ldsApiRequest.me()`                                 // logged-in user + meta data
+  * `ldsApiRequest.profile()`                                 // me + ward + leadership
+  * `ldsApiRequest.stake(p.homeStakeAppScopedId)`                      // returns ward member data
+  * `ldsApiRequest.stakePhotos(p.homeStakeAppScopedId)`                // returns photo metadata
+  * `ldsApiRequest.ward(p.homeStakeAppScopedId, p.homeWardAppScopedId)`         // returns ward member data
+  * `ldsApiRequest.wardPhotos(p.homeStakeAppScopedId, p.homeWardAppScopedId)`   // returns photo metadata
 
 NOTE: These also all exist statelessly as `LdsApiRequest.api.<<foo>>`
 * example: LdsApiRequest.api.profile(account)
