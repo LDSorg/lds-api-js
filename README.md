@@ -21,12 +21,12 @@ The modules `lds`, `angular-lds-io`, and `jquery-lds-io` are all aliases of `lds
 Angular
 =======
 
-See https://github.com/ldsorg/angular-lds-io
+See [angular-lds-io](https://github.com/LDSorg/lds-api-js/blob/master/README.angular.md)
 
 jQuery
 ======
 
-See https://github.com/ldsorg/jquery-lds-io
+See [jquery-lds-io](https://github.com/LDSorg/lds-api-js/blob/master/README.jquery.md)
 
 node
 ====
