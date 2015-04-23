@@ -33,6 +33,8 @@ node
 
 TODO
 
+Note: on the server you only get anonymized ids and other personally unidentifiable data, so the port of this library isn't as high of a priority. Your server component is mostly to guarantee a session from an actual member and get their calling (if your app distinguishes authority).
+
 LDS IO
 ======
 
