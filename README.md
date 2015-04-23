@@ -21,17 +21,19 @@ The modules `lds`, `angular-lds-io`, and `jquery-lds-io` are all aliases of `lds
 Angular
 =======
 
-See https://github.com/ldsorg/angular-lds-io
+See [angular-lds-io](https://github.com/LDSorg/lds-api-js/blob/master/README.angular.md)
 
 jQuery
 ======
 
-See https://github.com/ldsorg/jquery-lds-io
+See [jquery-lds-io](https://github.com/LDSorg/lds-api-js/blob/master/README.jquery.md)
 
 node
 ====
 
 TODO
+
+Note: on the server you only get anonymized ids and other personally unidentifiable data, so the port of this library isn't as high of a priority. Your server component is mostly to guarantee a session from an actual member and get their calling (if your app distinguishes by calling).
 
 LDS IO
 ======
